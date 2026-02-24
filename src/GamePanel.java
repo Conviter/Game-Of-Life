@@ -1,264 +1,351 @@
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.*;
-import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Random;
 import java.util.Set;
 
-public class GamePanel extends JPanel implements Runnable, KeyListener, MouseMotionListener, MouseListener, MouseWheelListener{
-    int screenWidth = 0; //768 pixels
-    int screenHeight = 0; //576 pixels
-    final int FPS = 60;
-    Timer timer;
+public class GamePanel extends JPanel implements Runnable,
+        KeyListener, MouseMotionListener, MouseListener, MouseWheelListener {
 
-    int gameWidth;
-    int gameHeight;
-    Point cameraPosition = new Point(0, 0);
-    boolean drawGrid = true;
-    int cellSize;
-    Game game;
-    Point oldPosition;
-    boolean dragging;
-    Thread gameThread;
-    Color gridColorZoomedIn = new Color(150, 150, 150, 40);
-    Color gridColorZoomedOut = new Color(150, 150, 150, 20);
-    boolean painting = false;
-    int paintSize = 2;
-    double density;
-    boolean isPainting = false;
-    Set<Point> cellsPainted = new HashSet<>();
+    // -----------------------
+    // Config
+    // -----------------------
 
-    public GamePanel(int screenWidth, int screenHeight, int cellSize, int startingCells, boolean drawGrid) {
-        this.drawGrid = drawGrid;
+    private final int screenWidth;
+    private final int screenHeight;
+
+    private int cellSize;
+    private boolean drawGrid;
+
+    private static final Color GRID_ZOOMED_IN  = new Color(150, 150, 150, 40);
+    private static final Color GRID_ZOOMED_OUT = new Color(150, 150, 150, 20);
+
+    // -----------------------
+    // Game State
+    // -----------------------
+
+    private final Game game;
+    private Timer timer;
+
+    private final Point camera = new Point(0, 0);
+
+
+    // -----------------------
+    // Input State
+    // -----------------------
+
+    private enum Tool { BRUSH, AREA }
+    private Tool currentTool = Tool.BRUSH;
+
+    private boolean draggingCamera = false;
+    private boolean drawingArea = false;
+    private boolean paintingBrush = false;
+
+    private Point lastMouse;
+    private Point selectionStart;
+    private Point selectionEnd;
+
+    private int paintSize = 2;
+    private double density = 1.0;
+
+    private final Set<Game.Cell> paintedCells = new HashSet<>();
+    private final Random random = new Random();
+
+    // -----------------------
+    // Constructor
+    // -----------------------
+
+    public GamePanel(int screenWidth, int screenHeight,
+                     int cellSize, int startingCells,
+                     boolean drawGrid) {
+
         this.screenWidth = screenWidth;
         this.screenHeight = screenHeight;
         this.cellSize = cellSize;
-        this.gameHeight = screenHeight / 2;
-        this.gameWidth = screenWidth / 2;
-        this.setPreferredSize(new Dimension(screenWidth, screenHeight));
-        this.setBackground(Color.black);
-        this.setDoubleBuffered(true);
-        this.addKeyListener(this);
-        this.setFocusable(true);
-        requestFocusInWindow();
-        game = new Game(startingCells, gameWidth, gameHeight, cellSize);
+        this.drawGrid = drawGrid;
 
-        this.addMouseMotionListener(this);
-        this.addMouseListener(this);
-        this.addMouseWheelListener(this);
+        this.game = new Game(startingCells,
+                screenWidth / 2,
+                screenHeight / 2,
+                cellSize);
+
+        setPreferredSize(new Dimension(screenWidth, screenHeight));
+        setBackground(Color.BLACK);
+        setDoubleBuffered(true);
+        setFocusable(true);
+
+        addKeyListener(this);
+        addMouseListener(this);
+        addMouseMotionListener(this);
+        addMouseWheelListener(this);
+    }
+    // -----------------------
+    // Update
+    // -----------------------
+
+    public void updateSelection(String selected) {
+        if ("Brush".equals(selected)) {
+            currentTool = Tool.BRUSH;
+        } else if ("Area".equals(selected)) {
+            currentTool = Tool.AREA;
+        }
     }
 
-    public void startGameThreat(){
-        gameThread = new Thread(this);
-        gameThread.start();
-
+    public void updateDensity(int density) {
+        this.density = density / 100.0;
     }
 
-
-    public void updateDensity(int density){
-        this.density = (double) density / 100;
+    public void updatePaintSize(int size) {
+        this.paintSize = Math.max(0, size);
     }
-    public void updateTimer(int time){
-        if (time == 0){
+
+    public void updateTimer(int time) {
+
+        if (timer == null) return;
+
+        if (time == 0) {
             timer.stop();
-        } else {
-            if (!timer.isRunning()){
-                timer.start();
-            }
-            timer.setDelay(1000 / time);
+            return;
         }
 
+        if (!timer.isRunning()) {
+            timer.start();
+        }
+
+        timer.setDelay(1000 / time);
     }
 
-    public void updateCellSize(int size){
-        if(size == 0) return;
+    public void updateCellSize(int size) {
+        if (size == 0) return;
         int centerX = screenWidth / 2;
         int centerY = screenHeight / 2;
-        double worldX = (centerX - cameraPosition.x) / (double) cellSize;
-        double worldY = (centerY - cameraPosition.y) / (double) cellSize;
+        double worldX = (centerX - camera.x) / (double) cellSize;
+        double worldY = (centerY - camera.y) / (double) cellSize;
         this.cellSize = size;
-        cameraPosition.x = (int)(centerX - worldX * cellSize);
-        cameraPosition.y = (int)(centerY - worldY * cellSize);
+        camera.x = (int) (centerX - worldX * cellSize);
+        camera.y = (int) (centerY - worldY * cellSize);
+    }
+    // -----------------------
+    // Game Loop
+    // -----------------------
+
+    public void startGameThread() {
+        Thread gameThread = new Thread(this);
+        gameThread.start();
     }
 
     @Override
     public void run() {
-        this.timer = new Timer(100, e -> {
+        timer = new Timer(100, e -> {
             game.applyRules();
             repaint();
         });
         timer.start();
     }
 
-    private void drawGrid(Graphics g){
-        if (cellSize < 3){
-            g.setColor(gridColorZoomedOut);
-        } else {
-            g.setColor(gridColorZoomedIn);
-        }
 
+    // -----------------------
+    // Rendering
+    // -----------------------
 
-        // Find where the first vertical line should start
-        int startX = cameraPosition.x % cellSize;
-        if (startX < 0) startX += cellSize;
-
-        int startY = cameraPosition.y % cellSize;
-        if (startY < 0) startY += cellSize;
-
-        // Draw vertical lines
-        for (int x = startX; x < screenWidth; x += cellSize) {
-            g.drawLine(x, 0, x, screenHeight);
-        }
-
-        // Draw horizontal lines
-        for (int y = startY; y < screenHeight; y += cellSize) {
-            g.drawLine(0, y, screenWidth, y);
-        }
-    }
-
-    public void paintComponent(Graphics g) {
+    @Override
+    protected void paintComponent(Graphics g) {
         super.paintComponent(g);
-        g.setColor(Color.gray);
-        for (Point cell : game.aliveCells.keySet()) {
-            g.fillRect((cell.x * cellSize) + cameraPosition.x, (cell.y * cellSize) + cameraPosition.y, cellSize, cellSize);
-        }
-        if (drawGrid) {
-            drawGrid(g);
-        }
 
+        drawCells(g);
+
+        if (drawGrid) drawGrid(g);
+
+        drawSelection(g);
     }
 
-    public void updatePaintSize(int size){
-        paintSize = size;
-    }
-
-    @Override
-    public void keyTyped(KeyEvent e) {
-
-    }
-
-    @Override
-    public void keyPressed(KeyEvent e) {
-        int speed = 20;
-        int code = e.getKeyCode();
-        switch (code) {
-            case KeyEvent.VK_LEFT:
-                cameraPosition.x += speed;
-                break;
-            case KeyEvent.VK_RIGHT:
-                cameraPosition.x -= speed;
-                break;
-            case KeyEvent.VK_UP:
-                cameraPosition.y += speed;
-                break;
-            case KeyEvent.VK_DOWN:
-                cameraPosition.y -= speed;
-                break;
+    private void drawCells(Graphics g) {
+        g.setColor(Color.GRAY);
+        for (Game.Cell cell : game.aliveCells) {
+            g.fillRect(
+                    worldToScreenX(cell.x()),
+                    worldToScreenY(cell.y()),
+                    cellSize,
+                    cellSize
+            );
         }
     }
 
-    @Override
-    public void keyReleased(KeyEvent e) {
+    private void drawGrid(Graphics g) {
+        g.setColor(cellSize < 3 ? GRID_ZOOMED_OUT : GRID_ZOOMED_IN);
 
+        int startX = mod(camera.x, cellSize);
+        int startY = mod(camera.y, cellSize);
+
+        for (int x = startX; x < screenWidth; x += cellSize)
+            g.drawLine(x, 0, x, screenHeight);
+
+        for (int y = startY; y < screenHeight; y += cellSize)
+            g.drawLine(0, y, screenWidth, y);
     }
 
+    private void drawSelection(Graphics g) {
+        if (!drawingArea || selectionStart == null || selectionEnd == null)
+            return;
+
+        int minX = Math.min(selectionStart.x, selectionEnd.x);
+        int minY = Math.min(selectionStart.y, selectionEnd.y);
+        int maxX = Math.max(selectionStart.x, selectionEnd.x);
+        int maxY = Math.max(selectionStart.y, selectionEnd.y);
+
+        int x = worldToScreenX(minX);
+        int y = worldToScreenY(minY);
+        int w = (maxX - minX + 1) * cellSize;
+        int h = (maxY - minY + 1) * cellSize;
+
+        g.setColor(Color.WHITE);
+        g.drawRect(x, y, w, h);
+    }
+
+    // -----------------------
+    // Mouse Input
+    // -----------------------
+
     @Override
-    public void mouseClicked(MouseEvent e) {
+    public void mouseWheelMoved(MouseWheelEvent e) {
+        //e.getScrollAmount();
+        updateCellSize(cellSize - e.getWheelRotation());
+        repaint();
 
     }
 
     @Override
     public void mousePressed(MouseEvent e) {
-        if (painting && e.getButton() == MouseEvent.BUTTON1) {
-            isPainting = true;
-            Point position = e.getPoint();
 
-            Graphics g = getGraphics();
+        if (SwingUtilities.isLeftMouseButton(e)) {
 
-
-            position.x = (position.x / cellSize);
-            position.y = (position.y / cellSize);
-            position.x -= cameraPosition.x/2;
-            position.y -= cameraPosition.y/2;
-            //game.aliveCells.put(position, false);
-
-            for (int i = -paintSize; i <= paintSize; i++){
-                for (int j = -paintSize; j <= paintSize; j++){
-                    game.spawnCell(new Point(position.x + i, position.y + j));
-                    //game.aliveCells.put(new Point(position.x + i, position.y + j), false);
-                }
+            if (currentTool == Tool.BRUSH) {
+                paintingBrush = true;
+                paintBrush(e);
+            } else {
+                drawingArea = true;
+                selectionStart = screenToWorld(e.getPoint());
+                selectionEnd = selectionStart;
             }
+
+        } else if (SwingUtilities.isRightMouseButton(e)) {
+            draggingCamera = true;
+            lastMouse = e.getPoint();
+        }
+    }
+
+    @Override
+    public void mouseDragged(MouseEvent e) {
+
+        if (draggingCamera) {
+            moveCamera(e);
+        }
+        else if (paintingBrush) {
+            paintBrush(e);
+        }
+        else if (drawingArea) {
+            selectionEnd = screenToWorld(e.getPoint());
             repaint();
-        } else {
-            dragging = true;
-            oldPosition = e.getPoint();
         }
     }
 
     @Override
     public void mouseReleased(MouseEvent e) {
-        isPainting = false;
-        cellsPainted.clear();
-        dragging = false;
-        oldPosition = null;
+
+        if (drawingArea && selectionStart != null && selectionEnd != null) {
+            fillSelection();
+        }
+
+        draggingCamera = false;
+        paintingBrush = false;
+        drawingArea = false;
+
+        selectionStart = null;
+        selectionEnd = null;
+        paintedCells.clear();
+
+        repaint();
     }
 
-    @Override
-    public void mouseEntered(MouseEvent e) {
+    // -----------------------
+    // Actions
+    // -----------------------
 
-    }
+    private void paintBrush(MouseEvent e) {
+        Point world = screenToWorld(e.getPoint());
 
-    @Override
-    public void mouseExited(MouseEvent e) {
+        for (int dx = -paintSize; dx <= paintSize; dx++) {
+            for (int dy = -paintSize; dy <= paintSize; dy++) {
 
-    }
+                Game.Cell cell = new Game.Cell(world.x + dx, world.y + dy);
 
-    @Override
-    public void mouseDragged(MouseEvent e) {
-        if (dragging){
-            Point newPosition = e.getPoint();
-            int newX = newPosition.x - oldPosition.x;
-            int newY = newPosition.y - oldPosition.y;
-            cameraPosition.x += newX;
-            cameraPosition.y += newY;
-
-            oldPosition = newPosition;
-            repaint();
-        }else if (painting){
-            Point position = e.getPoint();
-
-
-            position.x = (position.x / cellSize);
-            position.y = (position.y / cellSize);
-            position.x -= cameraPosition.x / 2;
-            position.y -= cameraPosition.y / 2;
-            //game.aliveCells.put(position, false);
-            Random rand = new Random();
-            for (int i = -paintSize; i <= paintSize; i++) {
-                for (int j = -paintSize; j <= paintSize; j++) {
-                    if (!cellsPainted.contains(new Point(position.x + i, position.y + j))) {
-                        cellsPainted.add(new Point(position.x + i, position.y + j));
-                        if (rand.nextDouble() <= density) {
-                            game.spawnCell(new Point(position.x + i, position.y + j));
-                            //game.aliveCells.put(new Point(position.x + i, position.y + j), false);
-                        }
-                    }
+                if (paintedCells.add(cell) && random.nextDouble() <= density) {
+                    game.spawnCell(cell);
                 }
             }
-            repaint();
+        }
+        repaint();
+    }
+
+    private void fillSelection() {
+        int minX = Math.min(selectionStart.x, selectionEnd.x);
+        int minY = Math.min(selectionStart.y, selectionEnd.y);
+        int maxX = Math.max(selectionStart.x, selectionEnd.x);
+        int maxY = Math.max(selectionStart.y, selectionEnd.y);
+
+        for (int x = minX; x <= maxX; x++) {
+            for (int y = minY; y <= maxY; y++) {
+                if (random.nextDouble() <= density)
+                    game.spawnCell(new Game.Cell(x, y));
+            }
         }
     }
 
-    @Override
-    public void mouseMoved(MouseEvent e) {
-
-    }
-
-    @Override
-    public void mouseWheelMoved(MouseWheelEvent e) {
-        //e.getScrollAmount();
-        updateCellSize(cellSize+e.getWheelRotation());
+    private void moveCamera(MouseEvent e) {
+        Point current = e.getPoint();
+        camera.x += current.x - lastMouse.x;
+        camera.y += current.y - lastMouse.y;
+        lastMouse = current;
         repaint();
     }
+
+    // -----------------------
+    // Helper
+    // -----------------------
+
+    private Point screenToWorld(Point p) {
+        return new Point(
+                (p.x - camera.x) / cellSize,
+                (p.y - camera.y) / cellSize
+        );
+    }
+
+    private int worldToScreenX(int worldX) {
+        return worldX * cellSize + camera.x;
+    }
+
+    private int worldToScreenY(int worldY) {
+        return worldY * cellSize + camera.y;
+    }
+
+    private int mod(int value, int divisor) {
+        int result = value % divisor;
+        return result < 0 ? result + divisor : result;
+    }
+
+    // -----------------------
+    // Unused
+    // -----------------------
+
+    @Override public void keyTyped(KeyEvent e) {}
+
+    @Override
+    public void keyPressed(KeyEvent e) {}
+
+    @Override public void keyReleased(KeyEvent e) {}
+    @Override public void mouseMoved(MouseEvent e) {}
+    @Override public void mouseClicked(MouseEvent e) {}
+    @Override public void mouseEntered(MouseEvent e) {}
+    @Override public void mouseExited(MouseEvent e) {}
 }

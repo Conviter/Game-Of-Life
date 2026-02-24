@@ -1,119 +1,166 @@
 import javax.swing.*;
 import javax.swing.event.ChangeEvent;
-import javax.swing.event.ChangeListener;
 import java.awt.*;
+import java.awt.event.ItemEvent;
 
 public class Main {
+
+    // -------------------------
+    // Constants
+    // -------------------------
+
+    private static final int WINDOW_WIDTH = 1680;
+    private static final int WINDOW_HEIGHT = 980;
+
+    // -------------------------
+    // Entry Point
+    // -------------------------
+
     public static void main(String[] args) {
-        JFrame frame = new JFrame();
-        JPanel panel = new JPanel();
-        JLabel label = new JLabel("Updates Per Second");
-        BoxLayout boxLayout = new BoxLayout(panel, BoxLayout.Y_AXIS);
-        GamePanel gamePanel = new GamePanel(1770, 980, 2, 100000, false);
-        JSlider sliderUps = new JSlider();
-        JSlider sliderSize = new JSlider();
-        JSlider sliderPaintSize = new JSlider();
-        JSlider sliderDensity = new JSlider();
+
+        JFrame frame = createFrame();
+        GamePanel gamePanel = new GamePanel(WINDOW_WIDTH, WINDOW_HEIGHT, 2, 100000, false);
+        JPanel controlPanel = createControlPanel(gamePanel);
+
+        frame.getContentPane().add(gamePanel);
+        frame.getContentPane().add(controlPanel);
+
+        frame.pack();
+        frame.setVisible(true);
+
+        gamePanel.requestFocusInWindow();
+        gamePanel.startGameThread();
+    }
+
+    // -------------------------
+    // Frame Setup
+    // -------------------------
+
+    private static JFrame createFrame() {
+        JFrame frame = new JFrame("game");
+
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         frame.setResizable(false);
-        frame.setTitle("game");
-        frame.setLocation(0,0);
-        frame.setVisible(true);
+        frame.setLocation(0, 0);
         frame.setMaximumSize(new Dimension(1920, 1080));
-        frame.getContentPane().setLayout(new BoxLayout(frame.getContentPane(), BoxLayout.X_AXIS));
 
+        frame.getContentPane().setLayout(
+                new BoxLayout(frame.getContentPane(), BoxLayout.X_AXIS)
+        );
 
-        sliderSize.setMinimum(1);
-        sliderSize.setMaximum(100);
-        sliderSize.setValue(2);
-        sliderSize.setMinorTickSpacing(1);
-        sliderSize.setMajorTickSpacing(20);
-        sliderSize.setPaintTicks(true);
-        sliderSize.setPaintLabels(true);
-        sliderSize.setSnapToTicks(true);
-        sliderSize.setOrientation(JSlider.VERTICAL);
-        sliderSize.addChangeListener(new ChangeListener() {
-            @Override
-            public void stateChanged(ChangeEvent e) {
-                JSlider source = (JSlider) e.getSource();
-                gamePanel.updateCellSize(source.getValue());
-            }
-        });
+        return frame;
+    }
 
+    // -------------------------
+    // Control Panel Setup
+    // -------------------------
 
+    private static JPanel createControlPanel(GamePanel gamePanel) {
 
-        sliderUps.setMinimum(0);
-        sliderUps.setMaximum(100);
-        sliderUps.setValue(1);
-        sliderUps.setMinorTickSpacing(1);
-        sliderUps.setMajorTickSpacing(20);
-        sliderUps.setPaintTicks(true);
-        sliderUps.setPaintLabels(true);
-        sliderUps.setSnapToTicks(true);
-        sliderUps.setOrientation(JSlider.VERTICAL);
-        sliderUps.addChangeListener(new ChangeListener() {
-            @Override
-            public void stateChanged(ChangeEvent e) {
-                JSlider source = (JSlider) e.getSource();
-                gamePanel.updateTimer(source.getValue());
-            }
-        });
+        JPanel panel = new JPanel();
+        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
 
-        sliderPaintSize.setMinimum(1);
-        sliderPaintSize.setMaximum(100);
-        sliderPaintSize.setValue(1);
-        sliderPaintSize.setMinorTickSpacing(1);
-        sliderPaintSize.setMajorTickSpacing(20);
-        sliderPaintSize.setPaintTicks(true);
-        sliderPaintSize.setPaintLabels(true);
-        sliderPaintSize.setSnapToTicks(true);
-        sliderPaintSize.setOrientation(JSlider.VERTICAL);
-        sliderPaintSize.addChangeListener(new ChangeListener() {
-            @Override
-            public void stateChanged(ChangeEvent e) {
-                JSlider source = (JSlider) e.getSource();
-                gamePanel.updatePaintSize(source.getValue());
-            }
-        });
+        // Labels
+        JLabel labelUps = createLabel("Updates Per Second");
+        JLabel labelZoom = createLabel("Zoom Level");
+        JLabel labelDensity = createLabel("Painting Density");
+        JLabel labelBrushSize = createLabel("Painting Brush Size");
+        JLabel labelTool = createLabel("Tool");
 
-        sliderDensity.setMinimum(1);
-        sliderDensity.setMaximum(100);
-        sliderDensity.setValue(1);
-        sliderDensity.setMinorTickSpacing(1);
-        sliderDensity.setMajorTickSpacing(20);
-        sliderDensity.setPaintTicks(true);
-        sliderDensity.setPaintLabels(true);
-        sliderDensity.setSnapToTicks(true);
-        sliderDensity.setOrientation(JSlider.VERTICAL);
-        sliderDensity.addChangeListener(new ChangeListener() {
-            @Override
-            public void stateChanged(ChangeEvent e) {
-                JSlider source = (JSlider) e.getSource();
-                gamePanel.updateDensity(source.getValue());
-            }
-        });
+        // Sliders
+        JSlider sliderUps = createSlider(10, gamePanel::updateTimer);
+        JSlider sliderZoom = createSlider(1, gamePanel::updateCellSize);
+        JSlider sliderBrushSize = createSlider(40, gamePanel::updatePaintSize);
+        JSlider sliderDensity = createSlider(40, gamePanel::updateDensity);
 
-        JCheckBox paintingCheck = new JCheckBox();
-        paintingCheck.addChangeListener(new ChangeListener() {
-            @Override
-            public void stateChanged(ChangeEvent e) {
-                gamePanel.painting = !gamePanel.painting;
-            }
-        });
-        label.setAlignmentX(Component.CENTER_ALIGNMENT);
+        // Apply initial values
+        gamePanel.updatePaintSize(40);
+        gamePanel.updateDensity(40);
 
-        panel.setLayout(boxLayout);
-        frame.getContentPane().add(gamePanel);
-        panel.add(label);
+        // Tool Selector
+        JComboBox<String> toolBox = createToolBox(gamePanel);
+
+        // Add components in structured order
+        panel.add(labelUps);
         panel.add(sliderUps);
-        panel.add(paintingCheck);
-        frame.add(sliderPaintSize);
 
-        frame.getContentPane().add(panel);
-        frame.getContentPane().add(sliderSize);
-        frame.getContentPane().add(sliderDensity);
-        frame.pack();
-        gamePanel.requestFocusInWindow();
-        gamePanel.startGameThreat();
+        panel.add(labelZoom);
+        panel.add(sliderZoom);
+
+        panel.add(labelDensity);
+        panel.add(sliderDensity);
+
+        panel.add(labelBrushSize);
+        panel.add(sliderBrushSize);
+
+        panel.add(labelTool);
+        panel.add(toolBox);
+
+        return panel;
+    }
+
+    // -------------------------
+    // Component Factories
+    // -------------------------
+
+    private static JLabel createLabel(String text) {
+        JLabel label = new JLabel(text);
+        label.setAlignmentX(Component.LEFT_ALIGNMENT);
+        return label;
+    }
+
+    private static JSlider createSlider(int initialValue, SliderUpdateAction action) {
+
+        JSlider slider = getBaseSlider();
+        slider.setValue(initialValue);
+
+        slider.addChangeListener((ChangeEvent e) -> {
+            JSlider source = (JSlider) e.getSource();
+            action.onUpdate(source.getValue());
+        });
+
+        return slider;
+    }
+
+    private static JComboBox<String> createToolBox(GamePanel gamePanel) {
+
+        String[] tools = {"Brush", "Area"};
+        JComboBox<String> box = new JComboBox<>(tools);
+
+        box.setMaximumSize(new Dimension(100, 25));
+        box.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+        box.addItemListener((ItemEvent e) ->
+                gamePanel.updateSelection(box.getSelectedItem().toString())
+        );
+
+        return box;
+    }
+
+    // -------------------------
+    // Base Slider Config
+    // -------------------------
+
+    public static JSlider getBaseSlider() {
+        JSlider slider = new JSlider();
+
+        slider.setMinimum(0);
+        slider.setMaximum(100);
+        slider.setMinorTickSpacing(1);
+        slider.setMajorTickSpacing(20);
+        slider.setPaintTicks(true);
+        slider.setPaintLabels(true);
+        slider.setSnapToTicks(true);
+        slider.setOrientation(JSlider.HORIZONTAL);
+
+        return slider;
+    }
+
+    // -------------------------
+    // Functional Interface
+    // -------------------------
+
+    private interface SliderUpdateAction {
+        void onUpdate(int value);
     }
 }

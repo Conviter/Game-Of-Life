@@ -1,121 +1,133 @@
-import java.awt.*;
-import java.util.*;
-import java.util.concurrent.RecursiveAction;
-
+import java.util.HashSet;
+import java.util.Random;
+import java.util.Set;
 
 public class Game {
+
+    // -------------------------------------------------
+    // Configuration
+    // -------------------------------------------------
+
     int gameWidth;
     int gameHeight;
     int cellSize;
-    Point[] neighbours = {
-            new Point(-1, 0),
-            new Point(-1, 1),
-            new Point(-1, -1),
-            new Point(1, 0),
-            new Point(1, 1),
-            new Point(1, -1),
-            new Point(0, 1),
-            new Point(0, -1)
-    };
-    //Set<Point> aliveCells = new HashSet<>();
-    Map<Point, Boolean> aliveCells = new HashMap<>();
 
-    public Game(int startingCells, int gameWidth, int gameHeight, int cellSize) {
-        this.gameHeight = gameHeight;
-        this.gameWidth = gameWidth;
-        this.cellSize = cellSize;
-        Random rand = new Random();
-//        for (int i = 0; i < startingCells; i++){
-//            int x = rand.nextInt(this.gameWidth);
-//            int y = rand.nextInt(this.gameHeight);
-//            //aliveCells.add(new Point(x, y));
-//            newCells.put(new Point(x, y), false);
-       // }
+    // -------------------------------------------------
+    // Cell Representation
+    // -------------------------------------------------
+
+    public record Cell(int x, int y) {
+        public Cell addCell(Cell other) {
+            return new Cell(this.x + other.x, this.y + other.y);
+        }
     }
 
-//    private class applyRulesTask extends RecursiveAction {
-//
-//        @Override
-//        protected void compute() {
-//            Map<Point, Boolean> aliveCellsNextState = new HashMap<>();
-//            Set<Point> deadCellsToCheck = new HashSet<>();
-//            Set<Point> aliveSet = aliveCells.keySet();
-//            for (Point cell : aliveSet) {
-//                int aliveNeighbours = 0;
-//                for (Point neighbour : neighbours) {
-//                    boolean neighbourState = aliveCells.containsKey(addPoint(cell, neighbour));
-//                    if (neighbourState) {
-//                        aliveNeighbours += 1;
-//                    } else {
-//                        if (!aliveCells.get(cell)) {
-//                            deadCellsToCheck.add(addPoint(cell, neighbour));
-//                        }
-//                    }
-//                }
-//                if (aliveNeighbours == 3 || aliveNeighbours == 2) {
-//                    aliveCellsNextState.put(cell, true);
-//                }
-//            }
-//            for (Point cell : deadCellsToCheck) {
-//                int aliveNeighbours = 0;
-//                for (Point neighbour : neighbours) {
-//                    boolean neighbourState = aliveCells.containsKey(addPoint(cell, neighbour));
-//                    if (neighbourState) {
-//                        aliveNeighbours += 1;
-//                    }
-//                }
-//                if (aliveNeighbours == 3) {
-//                    aliveCellsNextState.put(cell, false);
-//                }
-//
-//            }
-//            aliveCells = aliveCellsNextState;
-//            deadCellsToCheck.clear();
-//        }
-//    }
+    // -------------------------------------------------
+    // Neighbour Offsets (Moore Neighborhood)
+    // -------------------------------------------------
 
-    public void spawnCell(Point point) {
-        aliveCells.put(point, false);
+    private static final Cell[] NEIGHBOURS = {
+            new Cell(-1, 0),
+            new Cell(-1, 1),
+            new Cell(-1, -1),
+            new Cell(1, 0),
+            new Cell(1, 1),
+            new Cell(1, -1),
+            new Cell(0, 1),
+            new Cell(0, -1)
+    };
+
+    // -------------------------------------------------
+    // State
+    // -------------------------------------------------
+
+    Set<Cell> aliveCells = new HashSet<>();
+    Set<Cell> deadCellsToCheck = new HashSet<>();
+    Set<Cell> aliveCellsNextState = new HashSet<>();
+
+    // -------------------------------------------------
+    // Constructor
+    // -------------------------------------------------
+
+    public Game(int startingCells, int gameWidth, int gameHeight, int cellSize) {
+        this.gameWidth = gameWidth;
+        this.gameHeight = gameHeight;
+        this.cellSize = cellSize;
+
+        Random random = new Random();
+
+        for (int i = 0; i < startingCells; i++) {
+            int x = random.nextInt(this.gameWidth);
+            int y = random.nextInt(this.gameHeight);
+            aliveCells.add(new Cell(x, y));
+        }
+    }
+
+    // -------------------------------------------------
+    // Public API
+    // -------------------------------------------------
+
+    public void spawnCell(Cell cell) {
+        aliveCells.add(cell);
     }
 
     public void applyRules() {
-        Map<Point, Boolean> aliveCellsNextState = new HashMap<>();
-        Set<Point> deadCellsToCheck = new HashSet<>();
-        Set<Point> aliveSet = aliveCells.keySet();
-        for (Point cell : aliveSet) {
-            int aliveNeighbours = 0;
-            for (Point neighbour : neighbours) {
-                boolean neighbourState = aliveCells.containsKey(addPoint(cell, neighbour));
-                if (neighbourState) {
-                    aliveNeighbours += 1;
-                } else {
-                   // if (!aliveCells.get(cell)) {
-                        deadCellsToCheck.add(addPoint(cell, neighbour));
-                   // }
-                }
-            }
-            if (aliveNeighbours == 3 || aliveNeighbours == 2) {
-                aliveCellsNextState.put(cell, true);
-            }
-        }
-        for (Point cell : deadCellsToCheck) {
-            int aliveNeighbours = 0;
-            for (Point neighbour : neighbours) {
-                boolean neighbourState = aliveCells.containsKey(addPoint(cell, neighbour));
-                if (neighbourState) {
-                    aliveNeighbours += 1;
-                }
-            }
-            if (aliveNeighbours == 3) {
-                aliveCellsNextState.put(cell, false);
-            }
+        long pre = System.currentTimeMillis();
 
-        }
-        aliveCells = aliveCellsNextState;
+        aliveCellsNextState.clear();
         deadCellsToCheck.clear();
+
+        killCells();
+        reviveCells();
+
+        // Move next state into current state
+        aliveCells = new HashSet<>(aliveCellsNextState);
+
+        long post = System.currentTimeMillis();
+        System.out.println(post - pre);
     }
 
-    private Point addPoint(Point point1, Point point2){
-        return new Point(point1.x + point2.x, point1.y + point2.y);
+    // -------------------------------------------------
+    // Rule Logic
+    // -------------------------------------------------
+
+    public void killCells() {
+        for (Cell cell : aliveCells) {
+
+            int aliveNeighbours = 0;
+
+            for (Cell offset : NEIGHBOURS) {
+                Cell neighbour = cell.addCell(offset);
+
+                if (aliveCells.contains(neighbour)) {
+                    aliveNeighbours++;
+                } else {
+                    deadCellsToCheck.add(neighbour);
+                }
+            }
+
+            // Survives with 2 or 3 neighbours
+            if (aliveNeighbours == 2 || aliveNeighbours == 3) {
+                aliveCellsNextState.add(cell);
+            }
+        }
+    }
+
+    public void reviveCells() {
+        for (Cell cell : deadCellsToCheck) {
+
+            int aliveNeighbours = 0;
+
+            for (Cell offset : NEIGHBOURS) {
+                if (aliveCells.contains(cell.addCell(offset))) {
+                    aliveNeighbours++;
+                }
+            }
+
+            // Revives with exactly 3 neighbours
+            if (aliveNeighbours == 3) {
+                aliveCellsNextState.add(cell);
+            }
+        }
     }
 }
