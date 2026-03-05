@@ -1,6 +1,8 @@
-import java.util.HashSet;
-import java.util.Random;
-import java.util.Set;
+package NeighbourCount;
+
+import java.lang.reflect.Array;
+import java.util.*;
+
 
 public class Game {
 
@@ -12,6 +14,7 @@ public class Game {
     int gameHeight;
     int cellSize;
 
+
     // -------------------------------------------------
     // Cell Representation
     // -------------------------------------------------
@@ -21,6 +24,7 @@ public class Game {
             return new Cell(this.x + other.x, this.y + other.y);
         }
     }
+
 
     // -------------------------------------------------
     // Neighbour Offsets (Moore Neighborhood)
@@ -41,10 +45,9 @@ public class Game {
     // State
     // -------------------------------------------------
 
-    Set<Cell> aliveCells = new HashSet<>();
-    Set<Cell> deadCellsToCheck = new HashSet<>();
-    Set<Cell> aliveCellsNextState = new HashSet<>();
-
+    Set<Cell> aliveCells;
+    Map<Cell, Integer> neighbourCount;
+    Set<Cell> aliveCellsNextState;
     // -------------------------------------------------
     // Constructor
     // -------------------------------------------------
@@ -53,6 +56,11 @@ public class Game {
         this.gameWidth = gameWidth;
         this.gameHeight = gameHeight;
         this.cellSize = cellSize;
+
+        this.aliveCells = new HashSet<>(startingCells);
+        this.aliveCellsNextState = new HashSet<>(startingCells);
+        this.neighbourCount  = new HashMap<>(startingCells);
+
 
         Random random = new Random();
 
@@ -71,63 +79,28 @@ public class Game {
         aliveCells.add(cell);
     }
 
-    public void applyRules() {
-        long pre = System.currentTimeMillis();
-
-        aliveCellsNextState.clear();
-        deadCellsToCheck.clear();
-
-        killCells();
-        reviveCells();
-
-        // Move next state into current state
-        aliveCells = new HashSet<>(aliveCellsNextState);
-
-        long post = System.currentTimeMillis();
-        System.out.println(post - pre);
-    }
 
     // -------------------------------------------------
     // Rule Logic
     // -------------------------------------------------
-
-    public void killCells() {
-        for (Cell cell : aliveCells) {
-
-            int aliveNeighbours = 0;
-
+    public void applyRules() {
+        long pre = System.currentTimeMillis();
+        for (Cell cell : aliveCells){
             for (Cell offset : NEIGHBOURS) {
                 Cell neighbour = cell.addCell(offset);
-
-                if (aliveCells.contains(neighbour)) {
-                    aliveNeighbours++;
-                } else {
-                    deadCellsToCheck.add(neighbour);
-                }
-            }
-
-            // Survives with 2 or 3 neighbours
-            if (aliveNeighbours == 2 || aliveNeighbours == 3) {
-                aliveCellsNextState.add(cell);
+                neighbourCount.put(neighbour, neighbourCount.getOrDefault(neighbour, 0) + 1);
             }
         }
-    }
 
-    public void reviveCells() {
-        for (Cell cell : deadCellsToCheck) {
-
-            int aliveNeighbours = 0;
-
-            for (Cell offset : NEIGHBOURS) {
-                if (aliveCells.contains(cell.addCell(offset))) {
-                    aliveNeighbours++;
-                }
-            }
-
-            // Revives with exactly 3 neighbours
-            if (aliveNeighbours == 3) {
-                aliveCellsNextState.add(cell);
+        for (Map.Entry<Cell, Integer> cell : neighbourCount.entrySet()){
+            if ((aliveCells.contains(cell.getKey()) && cell.getValue() == 2) || cell.getValue() == 3){
+                aliveCellsNextState.add(cell.getKey());
             }
         }
+        aliveCells = aliveCellsNextState;
+        neighbourCount.clear();
+        aliveCellsNextState = new HashSet<>();
+        long post = System.currentTimeMillis();
+        System.out.println((post - pre));
     }
 }
