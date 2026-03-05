@@ -1,7 +1,6 @@
 package NeighbourCountPrimitiveMap;
 
 import it.unimi.dsi.fastutil.longs.Long2IntOpenHashMap;
-import it.unimi.dsi.fastutil.longs.LongArraySet;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 
 import java.util.*;

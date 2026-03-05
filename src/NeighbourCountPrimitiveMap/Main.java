@@ -4,6 +4,7 @@ import javax.swing.*;
 import javax.swing.event.ChangeEvent;
 import java.awt.*;
 import java.awt.event.ItemEvent;
+import java.util.Objects;
 
 public class Main {
 
@@ -132,7 +133,7 @@ public class Main {
         box.setAlignmentX(Component.LEFT_ALIGNMENT);
 
         box.addItemListener((ItemEvent e) ->
-                gamePanel.updateSelection(box.getSelectedItem().toString())
+                gamePanel.updateSelection(Objects.requireNonNull(box.getSelectedItem()).toString())
         );
 
         return box;

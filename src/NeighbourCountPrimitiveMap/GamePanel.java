@@ -5,9 +5,7 @@ import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.*;
-import java.util.HashSet;
 import java.util.Random;
-import java.util.Set;
 
 public class GamePanel extends JPanel implements Runnable,
         KeyListener, MouseMotionListener, MouseListener, MouseWheelListener {
@@ -20,7 +18,7 @@ public class GamePanel extends JPanel implements Runnable,
     private final int screenHeight;
 
     private int cellSize;
-    private boolean drawGrid;
+    private final boolean drawGrid;
 
     private static final Color GRID_ZOOMED_IN  = new Color(150, 150, 150, 40);
     private static final Color GRID_ZOOMED_OUT = new Color(150, 150, 150, 20);
