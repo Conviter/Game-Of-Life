@@ -133,19 +133,23 @@ public class Game {
 
     public class ApplyRulesTask extends RecursiveAction {
 
-        Long2IntOpenHashMap cells;
+        Long2IntOpenHashMap cellsThisState;
         Long2IntOpenHashMap cellsNextState = new Long2IntOpenHashMap(startingCellSize);
         LongOpenHashSet deadNeighboursToCheck = new LongOpenHashSet(startingCellSize);
-        LongOpenHashSet births = new LongOpenHashSet();
+        Long2IntOpenHashMap births = new Long2IntOpenHashMap();
+        int gridX;
+        int gridY;
 
-        public ApplyRulesTask(Long2IntOpenHashMap cells) {
-            this.cells = cells;
+        public ApplyRulesTask(Long2IntOpenHashMap cellsThisState, long gridCord) {
+            this.cellsThisState = cellsThisState;
+            gridX = longToIntX(gridCord);
+            gridY = longToIntY(gridCord);
         }
 
         @Override
         protected void compute() {
             totalAlive = 0;
-            for (Long2IntMap.Entry cell : cells.long2IntEntrySet()) {
+            for (Long2IntMap.Entry cell : cellsThisState.long2IntEntrySet()) {
 
                 int x = longToIntX(cell.getLongKey());
                 int y = longToIntY(cell.getLongKey());
@@ -190,7 +194,7 @@ public class Game {
                 }
 
                 if (neighbourCount == 3) {
-                    births.add(cell);
+                    births.put(cell, 10);
                 }
             }
         }
@@ -200,39 +204,20 @@ public class Game {
     public void applyRules() {
         long pre = System.currentTimeMillis();
 
-        List<ApplyRulesTask> tasks = new ArrayList<>();
-
-        cells.values().parallelStream().forEach(gridCells -> {
-            ApplyRulesTask task = new ApplyRulesTask(gridCells);
-            task.compute();
-            synchronized (tasks) {
-                tasks.add(task);
-            }
-        });
-
-
-
         Long2ObjectOpenHashMap<Long2IntOpenHashMap> nextCells =
-                new Long2ObjectOpenHashMap<>();
+                new Long2ObjectOpenHashMap<>(cells.size());
 
-        for (ApplyRulesTask task : tasks) {
-
-            // survivors
-            for (Long2IntMap.Entry e : task.cellsNextState.long2IntEntrySet()) {
-                addCellToMap(nextCells, e.getLongKey());
-            }
-
-            // births
-            for (long cell : task.births) {
-                addCellToMap(nextCells, cell);
-            }
-        }
+        cells.long2ObjectEntrySet().parallelStream().forEach(gridCells -> {
+            ApplyRulesTask task = new ApplyRulesTask(gridCells.getValue(), gridCells.getLongKey());
+            task.compute();
+            nextCells.put(gridCells.getLongKey(), task.cellsNextState);
+            nextCells.get(gridCells.getLongKey()).putAll(task.births);
+        });
 
         cells = nextCells;
 
         long post = System.currentTimeMillis();
         updateTime = (int)(post - pre);
-
-
+        System.out.println(updateTime);
     }
 }
