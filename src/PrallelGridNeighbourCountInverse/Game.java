@@ -38,8 +38,14 @@ public class Game {
     // Neighbour Offsets
     // -------------------------------------------------
 
-    private static final int[] neighbourOffsetX = {-1, -1, -1, 1, 1, 1, 0, 0};
-    private static final int[] neighbourOffsetY = {0, 1, -1, 0, 1, -1, 1, -1};
+    private static final int[] offsets = {-1, 0,
+                                          -1, 1,
+                                          -1, -1,
+                                           1, 0,
+                                           1, 1,
+                                           1, -1,
+                                           0, 1,
+                                           0, -1};
 
     // -------------------------------------------------
     // State
@@ -48,6 +54,8 @@ public class Game {
     Long2ObjectOpenHashMap<LongOpenHashSet> cells = new Long2ObjectOpenHashMap<>();
     int totalAlive;
     int updateTime;
+    int updateTimeTotal;
+    int updateCount;
 
     // -------------------------------------------------
     // Constructor
@@ -59,18 +67,7 @@ public class Game {
         this.cellSize = cellSize;
         this.startingCellSize = startingCells;
 
-        int thread_count = Runtime.getRuntime().availableProcessors();
-
-        System.out.println(thread_count);
-
-        Random random = new Random();
-
-        for (int i = 0; i < startingCells; i++) {
-            int x = random.nextInt(this.gameWidth);
-            int y = random.nextInt(this.gameHeight);
-            addCell(cordsToLong(x, y));
-
-        }
+        spawnCountOfCells(startingCells);
     }
 
     // -------------------------------------------------
@@ -82,25 +79,13 @@ public class Game {
         int xGrid = longToIntX(cell) >> 9;
         int yGrid = longToIntY(cell) >> 9;
         long gridCord = cordsToLong(xGrid, yGrid);
-        if (cells.containsKey(cordsToLong(xGrid, yGrid))) {
-            cells.get(gridCord).add(cell);
-        } else {
-            cells.put(gridCord, new LongOpenHashSet(startingCellSize));
-            cells.get(gridCord).add(cell);
+        LongOpenHashSet set = cells.get(gridCord);
+
+        if (set == null) {
+            set = new LongOpenHashSet(250000);
+            cells.put(gridCord, set);
         }
-    }
-
-    public boolean getNeighbourState(int neighbourX, int neighbourY) {
-        int gridCordX = neighbourX >> 9;
-        int gridCordY = neighbourY >> 9;
-
-        LongOpenHashSet grid = cells.get(cordsToLong(gridCordX, gridCordY));
-
-        if (grid == null) {
-            return false;
-        }
-
-        return grid.contains(cordsToLong(neighbourX, neighbourY));
+        set.add(cell);
     }
 
 
@@ -112,21 +97,49 @@ public class Game {
         addCell(cell);
     }
 
+    public void spawnCountOfCells(int count){
+        Random random = new Random();
+
+        int perAxis = (int) Math.sqrt(count);
+        perAxis = (int) (perAxis / 0.7);
+        int cellsLeft = count;
+
+        for (int i = 0; i < perAxis; i++) {
+            for (int j = 0; j < perAxis; j++) {
+                if (cellsLeft == 0){
+                    return;
+                }
+                double rolled = random.nextDouble();
+                if (rolled >= 0.7){
+                    addCell(cordsToLong(i, j));
+                    cellsLeft--;
+                }
+            }
+        }
+    }
+
+    public void wipeBoard(){
+        cells.clear();
+        totalAlive = 0;
+    }
+
 
     // -------------------------------------------------
     // Rule Logic
     // -------------------------------------------------
 
 
+
     public class ParallelTask extends RecursiveAction {
         LongOpenHashSet cellsThisState;
-        LongOpenHashSet cellsNextState = new LongOpenHashSet(startingCellSize);
+        LongOpenHashSet cellsNextState;
         LongOpenHashSet deadNeighboursToCheck = new LongOpenHashSet(startingCellSize);
         LongOpenHashSet births = new LongOpenHashSet(startingCellSize);
         int aliveCells = 0;
 
         public ParallelTask(LongOpenHashSet cellsThisState) {
             this.cellsThisState = cellsThisState;
+             cellsNextState = new LongOpenHashSet(cellsThisState.size() * 2);
         }
 
         @Override
@@ -138,15 +151,20 @@ public class Game {
 
                 int neighbourCount = 0;
 
-                for (int j = 0; j < neighbourOffsetX.length; j++) {
+                for (int j = 0; j < offsets.length; j+=2) {
 
-                    int neighbourX = x + neighbourOffsetX[j];
-                    int neighbourY = y + neighbourOffsetY[j];
+                    int neighbourX = (x + offsets[j]);
+                    int neighbourY = (y + offsets[j+1]);
 
-                    if (getNeighbourState(neighbourX, neighbourY)) {
+                    LongOpenHashSet grid = cells.get(cordsToLong(neighbourX >>9, neighbourY>>9));
+
+                    long neighbourCord = cordsToLong(neighbourX, neighbourY);
+
+                    if (grid != null && grid.contains(neighbourCord)) {
                         neighbourCount++;
                     } else {
-                        deadNeighboursToCheck.add(cordsToLong(neighbourX, neighbourY));
+
+                        deadNeighboursToCheck.add(neighbourCord);
                     }
                 }
 
@@ -165,12 +183,14 @@ public class Game {
 
                 int neighbourCount = 0;
 
-                for (int j = 0; j < neighbourOffsetX.length; j++) {
+                for (int j = 0; j < offsets.length; j+=2) {
 
-                    int neighbourX = x + neighbourOffsetX[j];
-                    int neighbourY = y + neighbourOffsetY[j];
+                    int neighbourX = x + offsets[j];
+                    int neighbourY = y + offsets[j+1];
 
-                    if (getNeighbourState(neighbourX, neighbourY)) {
+                    LongOpenHashSet grid = cells.get(cordsToLong(neighbourX >> 9, neighbourY >> 9));
+
+                    if (grid != null && grid.contains(cordsToLong(neighbourX, neighbourY))) {
                         neighbourCount++;
                     }
                 }
@@ -195,8 +215,9 @@ public class Game {
         cells.long2ObjectEntrySet().parallelStream().forEach(gridCells -> {
             ParallelTask task = new ParallelTask(gridCells.getValue());
             task.compute();
-            nextCells.put(gridCells.getLongKey(), task.cellsNextState);
-            nextCells.get(gridCells.getLongKey()).addAll(task.births);
+            LongOpenHashSet next = task.cellsNextState;
+            next.addAll(task.births);
+            nextCells.put(gridCells.getLongKey(), next);
             totalAlive += task.aliveCells;
         });
 
@@ -204,6 +225,21 @@ public class Game {
 
         long post = System.currentTimeMillis();
         updateTime = (int)(post - pre);
+        updateTimeTotal+= updateTime;
+//        updateCount++;
+//        if (updateCount == 100){
+//            wipeBoard();
+//            spawnCountOfCells(1000000);
+//        } else if (updateCount == 200){
+//            wipeBoard();
+//            spawnCountOfCells(1000000);
+//        } else if (updateCount == 300){
+//            wipeBoard();
+//            spawnCountOfCells(1000000);
+//        } else if(updateCount == 400){
+//            wipeBoard();
+//            System.out.println("Processing speed per generation: " +  (updateTimeTotal / updateCount));
+//        }
         //System.out.println(updateTime);
     }
 }

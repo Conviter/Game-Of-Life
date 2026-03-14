@@ -152,8 +152,15 @@ public class GamePanel extends JPanel implements Runnable,
     @Override
     public void run() {
         timer = new Timer(100, e -> {
+            long pre = System.currentTimeMillis();
             game.applyRules();
+            long post = System.currentTimeMillis();
+            System.out.println("applying rules: " + (post - pre));
+
+            pre = System.currentTimeMillis();
             repaint();
+            post = System.currentTimeMillis();
+            //System.out.println("drawing Cells: " + (post - pre));
         });
         timer.start();
     }
@@ -165,6 +172,7 @@ public class GamePanel extends JPanel implements Runnable,
 
     @Override
     protected void paintComponent(Graphics g) {
+        long pre = System.currentTimeMillis();
         super.paintComponent(g);
         drawCells(g);
 
@@ -172,10 +180,12 @@ public class GamePanel extends JPanel implements Runnable,
 
         drawSelection(g);
         drawData(g);
+        long post = System.currentTimeMillis();
+        System.out.println("Drawing: " + (post - pre));
     }
 
     private void drawCells(Graphics g) {
-        long pre = System.currentTimeMillis();
+
         Arrays.fill(pixels, 0);
 
         for (LongOpenHashSet set : game.cells.values()) {
@@ -210,8 +220,7 @@ public class GamePanel extends JPanel implements Runnable,
         }
 
         g.drawImage(image, 0, 0, null);
-        long post = System.currentTimeMillis();
-        System.out.println("Drawing: " + (post - pre));
+
     }
 
     private void drawData(Graphics g){

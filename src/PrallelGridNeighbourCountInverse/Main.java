@@ -22,7 +22,7 @@ public class Main {
     public static void main(String[] args) {
 
         JFrame frame = createFrame();
-        GamePanel gamePanel = new GamePanel(WINDOW_WIDTH, WINDOW_HEIGHT, 2, 100000, false);
+        GamePanel gamePanel = new GamePanel(WINDOW_WIDTH, WINDOW_HEIGHT, 2, 1000000, false);
         JPanel controlPanel = createControlPanel(gamePanel);
 
         frame.getContentPane().add(gamePanel);
