@@ -8,6 +8,9 @@ import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.*;
+import java.awt.image.BufferedImage;
+import java.awt.image.DataBufferInt;
+import java.util.Arrays;
 import java.util.Random;
 
 public class GamePanel extends JPanel implements Runnable,
@@ -57,6 +60,9 @@ public class GamePanel extends JPanel implements Runnable,
     private final LongOpenHashSet paintedCells = new LongOpenHashSet(100000);
     private final Random random = new Random();
 
+    private BufferedImage image;
+    private int[] pixels;
+
     // -----------------------
     // Constructor
     // -----------------------
@@ -84,6 +90,9 @@ public class GamePanel extends JPanel implements Runnable,
         addMouseListener(this);
         addMouseMotionListener(this);
         addMouseWheelListener(this);
+
+        image = new BufferedImage(screenWidth, screenHeight, BufferedImage.TYPE_INT_ARGB);
+        pixels = ((DataBufferInt) image.getRaster().getDataBuffer()).getData();
     }
     // -----------------------
     // Update
@@ -157,7 +166,6 @@ public class GamePanel extends JPanel implements Runnable,
     @Override
     protected void paintComponent(Graphics g) {
         super.paintComponent(g);
-
         drawCells(g);
 
         if (drawGrid) drawGrid(g);
@@ -167,31 +175,55 @@ public class GamePanel extends JPanel implements Runnable,
     }
 
     private void drawCells(Graphics g) {
-        g.setColor(Color.GRAY);
-        for (Long2IntOpenHashMap set : game.cells.values()) {
-            for (long cell : set.keySet()) {
-                int x = Game.longToIntX(cell);
-                int y = Game.longToIntY(cell);
-                g.fillRect(
-                        worldToScreenX(x),
-                        worldToScreenY(y),
-                        cellSize,
-                        cellSize
-                );
+        long pre = System.currentTimeMillis();
+        Arrays.fill(pixels, 0);
+
+        for (LongOpenHashSet set : game.cells.values()) {
+            for (long cell : set) {
+
+                int worldX = Game.longToIntX(cell);
+                int worldY = Game.longToIntY(cell);
+
+                int sx = worldToScreenX(worldX);
+                int sy = worldToScreenY(worldY);
+
+                // draw cellSize × cellSize block
+                for (int dy = 0; dy < cellSize; dy++) {
+
+                    int py = sy + dy;
+                    if (py < 0 || py >= screenHeight) continue;
+
+                    int row = py * screenWidth;
+
+                    for (int dx = 0; dx < cellSize; dx++) {
+
+                        int px = sx + dx;
+                        if (px < 0 || px >= screenWidth) continue;
+
+                        if (sx >= screenWidth || sy >= screenHeight || sx + cellSize < 0 || sy + cellSize < 0)
+                            continue;
+
+                        pixels[row + px] = 0xFFFFFFFF;
+                    }
+                }
             }
         }
+
+        g.drawImage(image, 0, 0, null);
+        long post = System.currentTimeMillis();
+        System.out.println("Drawing: " + (post - pre));
     }
 
     private void drawData(Graphics g){
         g.setColor(Color.BLACK);
         g.fillRect(0, 0, 250, 30);
         g.setColor(Color.white);
-        g.drawString("Alive Cells: "+game.cells.size(), 10, 15);
+        g.drawString("Alive Cells: "+game.totalAlive, 10, 15);
         g.drawString("Update Time: "+game.updateTime+"ms", 120, 15);
     }
 
     private void drawGrid(Graphics g) {
-        int gridSize = 512;
+        int gridSize = cellSize;
 
         g.setColor(gridSize < 3 ? GRID_ZOOMED_OUT : GRID_ZOOMED_IN);
 
@@ -336,8 +368,8 @@ public class GamePanel extends JPanel implements Runnable,
 
     private Point screenToWorld(Point p) {
         return new Point(
-                (p.x - camera.x) / cellSize,
-                (p.y - camera.y) / cellSize
+                (int)Math.floor((p.x - camera.x) / (double)cellSize),
+                (int)Math.floor((p.y - camera.y) / (double)cellSize)
         );
     }
 
