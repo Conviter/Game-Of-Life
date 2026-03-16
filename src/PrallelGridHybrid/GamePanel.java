@@ -1,4 +1,4 @@
-package PrallelGridNeighbourCountInverse;
+package PrallelGridHybrid;
 
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 
@@ -152,7 +152,7 @@ public class GamePanel extends JPanel implements Runnable,
             long pre = System.currentTimeMillis();
             game.applyRules();
             long post = System.currentTimeMillis();
-            //System.out.println("applying rules: " + (post - pre));
+       //     System.out.println("applying rules: " + (post - pre));
 
             pre = System.currentTimeMillis();
             repaint();
@@ -185,7 +185,7 @@ public class GamePanel extends JPanel implements Runnable,
 
         Arrays.fill(pixels, 0);
 
-        for (LongOpenHashSet set : game.allCellsThisState.values()) {
+        for (LongOpenHashSet set : game.cells.values()) {
             for (long cell : set) {
 
                 int worldX = Game.longToIntX(cell);

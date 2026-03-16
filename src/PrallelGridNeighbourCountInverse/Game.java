@@ -2,6 +2,7 @@ package PrallelGridNeighbourCountInverse;
 
 import it.unimi.dsi.fastutil.longs.*;
 
+import java.util.BitSet;
 import java.util.Random;
 import java.util.concurrent.RecursiveAction;
 
@@ -51,7 +52,10 @@ public class Game {
     // State
     // -------------------------------------------------
 
-    Long2ObjectOpenHashMap<LongOpenHashSet> cells = new Long2ObjectOpenHashMap<>();
+    Long2ObjectOpenHashMap<LongOpenHashSet> allCellsThisState = new Long2ObjectOpenHashMap<>();
+    Long2ObjectOpenHashMap<LongOpenHashSet> allCellsNextState = new Long2ObjectOpenHashMap<>();
+    //Long2ObjectOpenHashMap<LongOpenHashSet> allDeadNeighboursToCheck = new Long2ObjectOpenHashMap<>();
+    Long2ObjectOpenHashMap<long[]> allDeadNeighboursToCheck = new Long2ObjectOpenHashMap<>();
     int totalAlive;
     int updateTime;
     int updateTimeTotal;
@@ -79,13 +83,27 @@ public class Game {
         int xGrid = longToIntX(cell) >> 9;
         int yGrid = longToIntY(cell) >> 9;
         long gridCord = cordsToLong(xGrid, yGrid);
-        LongOpenHashSet set = cells.get(gridCord);
+        LongOpenHashSet thisStateSet = allCellsThisState.get(gridCord);
+        LongOpenHashSet nextStateSet = allCellsNextState.get(gridCord);
+        long[] deadNeighbour = allDeadNeighboursToCheck.get(gridCord);
+        //LongOpenHashSet deadNeighbour = allDeadNeighboursToCheck.get(gridCord);
 
-        if (set == null) {
-            set = new LongOpenHashSet(250000);
-            cells.put(gridCord, set);
+        if (thisStateSet == null) {
+            thisStateSet = new LongOpenHashSet(250000);
+            allCellsThisState.put(gridCord, thisStateSet);
         }
-        set.add(cell);
+
+        if (nextStateSet == null) {
+            nextStateSet = new LongOpenHashSet(250000);
+            allCellsNextState.put(gridCord, nextStateSet);
+        }
+
+        if (deadNeighbour == null) {
+            //deadNeighbour = new LongOpenHashSet(250000);
+            deadNeighbour = new long[250000];
+            allDeadNeighboursToCheck.put(gridCord, deadNeighbour);
+        }
+        thisStateSet.add(cell);
     }
 
 
@@ -119,7 +137,7 @@ public class Game {
     }
 
     public void wipeBoard(){
-        cells.clear();
+        allCellsThisState.clear();
         totalAlive = 0;
     }
 
@@ -133,17 +151,20 @@ public class Game {
     public class ParallelTask extends RecursiveAction {
         LongOpenHashSet cellsThisState;
         LongOpenHashSet cellsNextState;
-        LongOpenHashSet deadNeighboursToCheck = new LongOpenHashSet(startingCellSize);
-        LongOpenHashSet births = new LongOpenHashSet(startingCellSize);
+        //LongOpenHashSet deadNeighboursToCheck;
+        long[] deadNeighboursToCheck;
+        int filledIndex = 0;
         int aliveCells = 0;
 
-        public ParallelTask(LongOpenHashSet cellsThisState) {
+        public ParallelTask(LongOpenHashSet cellsThisState, LongOpenHashSet cellsNextState, long[] deadNeighboursToCheck) {
             this.cellsThisState = cellsThisState;
-             cellsNextState = new LongOpenHashSet(cellsThisState.size() * 2);
+            this.cellsNextState = cellsNextState;
+            this.deadNeighboursToCheck = deadNeighboursToCheck;
         }
 
         @Override
         protected void compute() {
+            BitSet set = new BitSet();
             for (long cell : cellsThisState) {
 
                 int x = longToIntX(cell);
@@ -156,15 +177,25 @@ public class Game {
                     int neighbourX = (x + offsets[j]);
                     int neighbourY = (y + offsets[j+1]);
 
-                    LongOpenHashSet grid = cells.get(cordsToLong(neighbourX >>9, neighbourY>>9));
+                    LongOpenHashSet grid = allCellsThisState.get(cordsToLong(neighbourX >>9, neighbourY>>9));
 
                     long neighbourCord = cordsToLong(neighbourX, neighbourY);
 
                     if (grid != null && grid.contains(neighbourCord)) {
                         neighbourCount++;
                     } else {
+                        if (!set.get((neighbourX & 511) + (neighbourY & 511) * 512)){
+         //                  deadNeighboursToCheck.add(neighbourCord);
+                            if (filledIndex == deadNeighboursToCheck.length){
+                                long[] newAliveCells = new long[deadNeighboursToCheck.length * 2];
+                                System.arraycopy(deadNeighboursToCheck, 0, newAliveCells, 0, deadNeighboursToCheck.length);
+                                deadNeighboursToCheck = newAliveCells;
+                            }
+                            deadNeighboursToCheck[filledIndex] = neighbourCord;
+                            filledIndex += 1;
+                            set.set((neighbourX & 511) + (neighbourY & 511) * 512);
+                        }
 
-                        deadNeighboursToCheck.add(neighbourCord);
                     }
                 }
 
@@ -174,9 +205,11 @@ public class Game {
                     aliveCells++;
                 }
             }
-
+            long pre = System.currentTimeMillis();
             // check births
-            for (long cell : deadNeighboursToCheck) {
+   //         for (long cell : deadNeighboursToCheck) {
+            for (int i = 0; i < filledIndex; i++) {
+                long cell = deadNeighboursToCheck[i];
 
                 int x = longToIntX(cell);
                 int y = longToIntY(cell);
@@ -188,7 +221,7 @@ public class Game {
                     int neighbourX = x + offsets[j];
                     int neighbourY = y + offsets[j+1];
 
-                    LongOpenHashSet grid = cells.get(cordsToLong(neighbourX >> 9, neighbourY >> 9));
+                    LongOpenHashSet grid = allCellsThisState.get(cordsToLong(neighbourX >> 9, neighbourY >> 9));
 
                     if (grid != null && grid.contains(cordsToLong(neighbourX, neighbourY))) {
                         neighbourCount++;
@@ -197,9 +230,11 @@ public class Game {
 
                 if (neighbourCount == 3) {
                     aliveCells++;
-                    births.add(cell);
+                    cellsNextState.add(cell);
                 }
             }
+            long post = System.currentTimeMillis();
+            //System.out.println(post - pre);
         }
     }
 
@@ -210,32 +245,34 @@ public class Game {
         totalAlive = 0;
 
         Long2ObjectOpenHashMap<LongOpenHashSet> nextCells =
-                new Long2ObjectOpenHashMap<>(cells.size());
+                new Long2ObjectOpenHashMap<>(allCellsThisState.size());
 
-        cells.long2ObjectEntrySet().parallelStream().forEach(gridCells -> {
-            ParallelTask task = new ParallelTask(gridCells.getValue());
+        allCellsThisState.long2ObjectEntrySet().parallelStream().forEach(gridCells -> {
+            ParallelTask task = new ParallelTask(gridCells.getValue(), allCellsNextState.get(gridCells.getLongKey()), allDeadNeighboursToCheck.get(gridCells.getLongKey()));
             task.compute();
             LongOpenHashSet next = task.cellsNextState;
-            next.addAll(task.births);
+            //next.addAll(task.births);
             nextCells.put(gridCells.getLongKey(), next);
+            task.cellsThisState.clear();
+            allCellsNextState.put(gridCells.getLongKey(), task.cellsThisState);
             totalAlive += task.aliveCells;
         });
 
-        cells = nextCells;
+        allCellsThisState = nextCells;
 
         long post = System.currentTimeMillis();
         updateTime = (int)(post - pre);
         updateTimeTotal+= updateTime;
-//        updateCount++;
+        updateCount++;
 //        if (updateCount == 100){
 //            wipeBoard();
-//            spawnCountOfCells(1000000);
+//            spawnCountOfCells(5000000);
 //        } else if (updateCount == 200){
 //            wipeBoard();
-//            spawnCountOfCells(1000000);
+//            spawnCountOfCells(5000000);
 //        } else if (updateCount == 300){
 //            wipeBoard();
-//            spawnCountOfCells(1000000);
+//            spawnCountOfCells(5000000);
 //        } else if(updateCount == 400){
 //            wipeBoard();
 //            System.out.println("Processing speed per generation: " +  (updateTimeTotal / updateCount));
