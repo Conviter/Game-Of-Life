@@ -1,8 +1,5 @@
 package ParallelGridBitGrid;
 
-import it.unimi.dsi.fastutil.longs.Long2IntOpenHashMap;
-import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
-import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 
 import javax.swing.*;
@@ -24,7 +21,8 @@ public class GamePanel extends JPanel implements Runnable,
     private final int screenHeight;
 
     private int cellSize;
-    private boolean drawGrid = true;
+    private double zoom;
+    private boolean drawGrid;
 
     private static final Color GRID_ZOOMED_IN  = new Color(150, 150, 150, 40);
     private static final Color GRID_ZOOMED_OUT = new Color(150, 150, 150, 20);
@@ -43,7 +41,7 @@ public class GamePanel extends JPanel implements Runnable,
     // Input State
     // -----------------------
 
-    private enum Tool { BRUSH, AREA }
+    private enum Tool { BRUSH, AREA, ERASER, CLEAR }
     private Tool currentTool = Tool.BRUSH;
 
     private boolean draggingCamera = false;
@@ -60,8 +58,10 @@ public class GamePanel extends JPanel implements Runnable,
     private final LongOpenHashSet paintedCells = new LongOpenHashSet(100000);
     private final Random random = new Random();
 
-    private BufferedImage image;
-    private int[] pixels;
+    private final BufferedImage image;
+    private final int[] pixels;
+
+    private boolean erasing = false;
 
     // -----------------------
     // Constructor
@@ -74,8 +74,8 @@ public class GamePanel extends JPanel implements Runnable,
         this.screenWidth = screenWidth;
         this.screenHeight = screenHeight;
         this.cellSize = cellSize;
-        this.drawGrid = true;
-
+        this.drawGrid = drawGrid;
+        this.zoom = cellSize;
         this.game = new Game(startingCells,
                 screenWidth / 2,
                 screenHeight / 2,
@@ -98,11 +98,28 @@ public class GamePanel extends JPanel implements Runnable,
     // Update
     // -----------------------
 
+    public void toggleGrid(){
+        drawGrid = !drawGrid;
+    }
+
+    public void clear(){
+        game.clear();
+    }
+
     public void updateSelection(String selected) {
-        if ("Brush".equals(selected)) {
-            currentTool = Tool.BRUSH;
-        } else if ("Area".equals(selected)) {
-            currentTool = Tool.AREA;
+        switch(selected){
+            case "Brush":
+                currentTool = Tool.BRUSH;
+                break;
+            case "Area":
+                currentTool = Tool.AREA;
+                break;
+            case "Eraser":
+                currentTool = Tool.ERASER;
+                break;
+            case "Clear":
+                currentTool = Tool.CLEAR;
+                break;
         }
     }
 
@@ -131,6 +148,7 @@ public class GamePanel extends JPanel implements Runnable,
     }
 
     public void updateCellSize(int size) {
+        this.zoom = size;
         if (size == 0) return;
         int centerX = screenWidth / 2;
         int centerY = screenHeight / 2;
@@ -187,7 +205,6 @@ public class GamePanel extends JPanel implements Runnable,
     private void drawCells(Graphics g) {
 
         Arrays.fill(pixels, 0);
-
         for (var set : game.cells.long2ObjectEntrySet()) {
 
             int gridX = Game.longToIntX(set.getLongKey());
@@ -242,7 +259,6 @@ public class GamePanel extends JPanel implements Runnable,
                 }
             }
         }
-        // white
     }
 
 
@@ -301,13 +317,19 @@ public class GamePanel extends JPanel implements Runnable,
 
     @Override
     public void mousePressed(MouseEvent e) {
-
         if (SwingUtilities.isLeftMouseButton(e)) {
 
             if (currentTool == Tool.BRUSH) {
                 paintingBrush = true;
                 paintBrush(e);
-            } else {
+            } else if(currentTool == Tool.AREA) {
+                drawingArea = true;
+                selectionStart = screenToWorld(e.getPoint());
+                selectionEnd = selectionStart;
+            } else if(currentTool == Tool.ERASER){
+                erasing = true;
+                eraseBrush(e);
+            } else if (currentTool == Tool.CLEAR){
                 drawingArea = true;
                 selectionStart = screenToWorld(e.getPoint());
                 selectionEnd = selectionStart;
@@ -324,13 +346,13 @@ public class GamePanel extends JPanel implements Runnable,
 
         if (draggingCamera) {
             moveCamera(e);
-        }
-        else if (paintingBrush) {
+        } else if (paintingBrush) {
             paintBrush(e);
-        }
-        else if (drawingArea) {
+        } else if (drawingArea) {
             selectionEnd = screenToWorld(e.getPoint());
             repaint();
+        } else if(erasing){
+            eraseBrush(e);
         }
     }
 
@@ -338,7 +360,11 @@ public class GamePanel extends JPanel implements Runnable,
     public void mouseReleased(MouseEvent e) {
 
         if (drawingArea && selectionStart != null && selectionEnd != null) {
-            fillSelection();
+            if (currentTool == Tool.CLEAR){
+                clearSelection();
+            } else {
+                fillSelection();
+            }
         }
 
         draggingCamera = false;
@@ -355,6 +381,33 @@ public class GamePanel extends JPanel implements Runnable,
     // -----------------------
     // Actions
     // -----------------------
+
+
+
+    private void clearSelection(){
+        for (int x = selectionStart.x; x <= selectionEnd.x; x++) {
+            for (int y = selectionStart.y; y <= selectionEnd.y; y++) {
+                game.clearCell(Game.cordsToLong(x, y));
+            }
+        }
+    }
+
+    private void eraseBrush(MouseEvent e){
+        Point world = screenToWorld(e.getPoint());
+        int worldX = world.x;
+        int worldY = world.y;
+
+        for (int dx = -paintSize; dx <= paintSize; dx++) {
+            for (int dy = -paintSize; dy <= paintSize; dy++) {
+                int brushX = worldX + dx;
+                int brushY = worldY + dy;
+
+                long cell = Game.cordsToLong(brushX, brushY);
+                game.clearCell(cell);
+            }
+        }
+        repaint();
+    }
 
     private void paintBrush(MouseEvent e) {
         Point world = screenToWorld(e.getPoint());

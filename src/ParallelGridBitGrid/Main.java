@@ -69,12 +69,23 @@ public class Main {
         JLabel labelDensity = createLabel("Painting Density");
         JLabel labelBrushSize = createLabel("Painting Brush Size");
         JLabel labelTool = createLabel("Tool");
+        JLabel labelGrid = createLabel("Draw Grid");
 
         // Sliders
         JSlider sliderUps = createSlider(10, gamePanel::updateTimer);
         JSlider sliderZoom = createSlider(1, gamePanel::updateCellSize);
         JSlider sliderBrushSize = createSlider(40, gamePanel::updatePaintSize);
         JSlider sliderDensity = createSlider(40, gamePanel::updateDensity);
+
+        JButton buttonClear = new JButton("Clear All");
+        buttonClear.addActionListener(e -> {
+            gamePanel.clear();
+        });
+
+        JCheckBox checkBoxGrid = new JCheckBox();
+        checkBoxGrid.addActionListener(e -> {
+            gamePanel.toggleGrid();
+        });
 
         // Apply initial values
         gamePanel.updatePaintSize(40);
@@ -98,6 +109,11 @@ public class Main {
 
         panel.add(labelTool);
         panel.add(toolBox);
+
+        panel.add(buttonClear);
+
+        panel.add(labelGrid);
+        panel.add(checkBoxGrid);
 
         return panel;
     }
@@ -126,7 +142,7 @@ public class Main {
 
     private static JComboBox<String> createToolBox(GamePanel gamePanel) {
 
-        String[] tools = {"Brush", "Area"};
+        String[] tools = {"Brush", "Area", "Eraser", "Clear"};
         JComboBox<String> box = new JComboBox<>(tools);
 
         box.setMaximumSize(new Dimension(100, 25));

@@ -119,6 +119,28 @@ public class Game {
     // Public API
     // -------------------------------------------------
 
+    public void clear(){
+        cells.clear();
+    }
+
+    public void clearCell(long cell){
+        int x = longToIntX(cell);
+        int y = longToIntY(cell);
+
+        int gridX = Math.floorDiv(x, 512);
+        int gridY = Math.floorDiv(y, 512);
+
+        int localX = Math.floorMod(x, 512);
+        int localY = Math.floorMod(y, 512);
+        long[] grid = cells.get(cordsToLong(gridX, gridY));
+        if(grid == null){return;}
+        int index = localY * 512 + localX;
+        int word  = index >> 6;  // /64
+        int bit   = index & 63;
+
+        grid[word] &= ~(1L << bit);
+    }
+
     public void spawnCell(long cell) {
         int x = longToIntX(cell);
         int y = longToIntY(cell);
@@ -169,36 +191,20 @@ public class Game {
 
     public class ParallelTask extends RecursiveAction {
         long[] cellsThisState;
-        short[][] cellsNeighbours;
         long[] cellsNextState;
-        Long2IntOpenHashMap neighbourCount;
         int gridX;
         int gridY;
-        long thisGrid;
         int aliveCells = 0;
-        int minGridX;
-        int maxGridX;
-        int minGridY;
-        int maxGridY;
-        private final long[] cellsArr = new long[4];
 
         public ParallelTask(long[] cellsThisState, long grid) {
             this.cellsThisState = cellsThisState;
-            this.cellsNeighbours = new short[GRID_SIZE + 1][GRID_SIZE + 1];
             this.cellsNextState = new long[4096];
-            neighbourCount = new Long2IntOpenHashMap(cellsThisState.length * 4);
             gridX = (int) (grid >> 32);
             gridY = (int) grid;
-            thisGrid = grid;
         }
 
         @Override
         protected void compute() {
-            minGridX = gridX * GRID_SIZE;
-            maxGridX = minGridX + GRID_SIZE - 1;
-            minGridY = gridY * GRID_SIZE;
-            maxGridY = minGridY + GRID_SIZE - 1;
-
             for (int i = 0; i < GRID_SIZE; i++) {
                 for (int j = 0; j < GRID_SIZE; j++) {
                     int neighbourCount = 0;
@@ -208,9 +214,6 @@ public class Game {
                         int ny = j + offsets[k + 1];
 
                         long[] neighbourGrid = cellsThisState; // default: same chunk
-
-                        int gridOffsetX = 0;
-                        int gridOffsetY = 0;
 
                         // check if neighbor is outside current chunk
                         if (nx < 0 || nx >= GRID_SIZE || ny < 0 || ny >= GRID_SIZE) {
