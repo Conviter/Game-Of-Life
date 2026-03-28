@@ -119,6 +119,7 @@ public class Game {
     // Public API
     // -------------------------------------------------
 
+
     public void clear(){
         cells.clear();
     }
