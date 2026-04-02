@@ -1,10 +1,12 @@
 # Game of Life #
 
-Dies ist eine Implementation des Game of Life von John Conway. Diese setzt den Sparse-Universe Ansatz um, und erlaubt ein unendlich großes Universum mit dünn besetzten Zellen.
+Dies ist eine Implementation des Game of Life von John Conway. 
 
-Es gibt einige Kontrolelemente, so kann das Zoom level angepasst werden, die tick rate der Simulation geändert werden, oder auch ganz neue Zellen gesetzt werden. Auch kann die Kamera mit rechter Maustaste bewegt werden.
+Es gibt einige Kontrolelemente, so kann das Zoom level angepasst werden, die tick rate der Simulation geändert werden, oder Zellen erzeugt oder gelöscht werden. Auch kann die Kamera mit rechter Maustaste bewegt werden.
 
 Dieses Projekt ist ein WIP, ich arbeite immer noch an weiteren Optimierungsansetzen. Aus diesem Grund gibt es unterschiedliche Varianten.
+
+Zu diesem Zeitpunkt ist die Variante 
 
 Ein Video das die Simulation zeigt:
 
