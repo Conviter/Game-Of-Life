@@ -1,4 +1,4 @@
-package PrallelGridHybrid;
+package OldVersions.PrallelGridHybrid;
 
 import it.unimi.dsi.fastutil.longs.Long2IntOpenHashMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;

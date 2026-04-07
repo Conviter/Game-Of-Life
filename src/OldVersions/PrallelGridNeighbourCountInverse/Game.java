@@ -1,4 +1,4 @@
-package PrallelGridNeighbourCountInverse;
+package OldVersions.PrallelGridNeighbourCountInverse;
 
 import it.unimi.dsi.fastutil.longs.*;
 

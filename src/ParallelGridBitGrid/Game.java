@@ -54,6 +54,7 @@ public class Game {
     // -------------------------------------------------
 
     Long2ObjectOpenHashMap<long[]> cells = new Long2ObjectOpenHashMap<>();
+
     AtomicInteger totalAlive = new AtomicInteger();
     int updateTime;
     int updateTimeTotal;
@@ -84,12 +85,8 @@ public class Game {
             grid = new long[4096];
             cells.put(gridCord, grid);
         }
-        int index = y * 512 + x;
-        int word = (index >> 6);      // index / 64
-        int bit  = index & 63;
-        grid[word] |= (1L << bit);
+        setAlive(x, y, grid);
     }
-
 
 
     private void addCell(int localX, int localY, long gridKey) {
@@ -99,21 +96,32 @@ public class Game {
             grid = new long[4096];
             cells.put(gridKey, grid);
         }
-        int index = localY * 512 + localX;
-        int word  = index >> 6;  // /64
-        int bit   = index & 63;
+        setAlive(localX, localY, grid);
+    }
+
+
+    private void setAlive(int x, int y, long[] grid){
+        int index = y * 512 + x;
+        int word = (index >> 6);      // index / 64
+        int bit  = index & 63;
         grid[word] |= (1L << bit);
     }
 
+    private void setDead(int x, int y, long[] grid){
+        int index = y * 512 + x;
+        int word  = index >> 6;  // /64
+        int bit   = index & 63;
 
-    private void setAlive(int x, int y){
-
+        grid[word] &= ~(1L << bit);
     }
 
-    private void setDead(int x, int y){
+    private boolean getState(int x, int y, long[] grid){
+        int index = y * 512 + x;
+        int arrayIndex = index >> 6;
+        int bitIndex = index & 63;
 
+        return (grid[arrayIndex] & (1L << bitIndex)) != 0;
     }
-
 
     // -------------------------------------------------
     // Public API
@@ -135,11 +143,7 @@ public class Game {
         int localY = Math.floorMod(y, 512);
         long[] grid = cells.get(cordsToLong(gridX, gridY));
         if(grid == null){return;}
-        int index = localY * 512 + localX;
-        int word  = index >> 6;  // /64
-        int bit   = index & 63;
-
-        grid[word] &= ~(1L << bit);
+        setDead(localX, localY, grid);
     }
 
     public void spawnCell(long cell) {
@@ -165,22 +169,15 @@ public class Game {
         while(left > 0){
             for (int i = 0; i < 512; i++) {
                 for (int j = 0; j < 512; j++) {
-                    int x = i;
-                    int y = j;
                     double rolled = random.nextDouble();
                     if (rolled >= 0.6) {
-                        addCell(x, y, gridX, gridY);
+                        addCell(i, j, gridX, gridY);
                         left--;
                     }
                 }
             }
             gridX++;
         }
-    }
-
-    public void wipeBoard(){
-        cells.clear();
-        totalAlive.set(0);
     }
 
 
@@ -190,21 +187,23 @@ public class Game {
 
 
 
-    public class ParallelTask extends RecursiveAction {
+    public class ParallelTask {
+        Long2ObjectOpenHashMap<long[]> currentMap;
+
         long[] cellsThisState;
         long[] cellsNextState;
         int gridX;
         int gridY;
         int aliveCells = 0;
 
-        public ParallelTask(long[] cellsThisState, long grid) {
+        public ParallelTask(Long2ObjectOpenHashMap<long[]> currentMap, long[] cellsThisState, long grid) {
+            this.currentMap = currentMap;
             this.cellsThisState = cellsThisState;
             this.cellsNextState = new long[4096];
             gridX = (int) (grid >> 32);
             gridY = (int) grid;
         }
 
-        @Override
         protected void compute() {
             for (int i = 0; i < GRID_SIZE; i++) {
                 for (int j = 0; j < GRID_SIZE; j++) {
@@ -214,38 +213,29 @@ public class Game {
                         int nx = i + offsets[k];
                         int ny = j + offsets[k + 1];
 
-                        long[] neighbourGrid = cellsThisState; // default: same chunk
+                        long[] neighbourGrid = cellsThisState;
 
-                        // check if neighbor is outside current chunk
                         if (nx < 0 || nx >= GRID_SIZE || ny < 0 || ny >= GRID_SIZE) {
                             int neighbourGridX = gridX + Math.floorDiv(nx, GRID_SIZE);
                             int neighbourGridY = gridY + Math.floorDiv(ny, GRID_SIZE);
 
                             long neighbourKey = Game.cordsToLong(neighbourGridX, neighbourGridY);
-                            neighbourGrid = cells.get(neighbourKey);
 
-                            if (neighbourGrid == null) continue; // dead if neighbor chunk doesn't exist
+                            neighbourGrid = currentMap.get(neighbourKey);
+                            if (neighbourGrid == null) continue;
 
-                            // wrap nx/ny into neighbour chunk
                             nx = Math.floorMod(nx, GRID_SIZE);
                             ny = Math.floorMod(ny, GRID_SIZE);
                         }
 
-                        int index = ny * 512 + nx;
-                        int word = index >> 6;
-                        int bit = index & 63;
-                        if ((neighbourGrid[word] & (1L << bit)) != 0) {
+                        if (getState(nx, ny, neighbourGrid)) {
                             neighbourCount++;
                         }
                     }
 
-                    int index = j * 512 + i;
-                    int arrayIndex = index >> 6;
-                    int bitIndex = index & 63;
-
-                    boolean alive = (cellsThisState[arrayIndex] & (1L << bitIndex)) != 0;
+                    boolean alive = getState(i, j, cellsThisState);
                     if ((alive && neighbourCount == 2) || neighbourCount == 3) {
-                        cellsNextState[arrayIndex] |= (1L << bitIndex);
+                        setAlive(i, j, cellsNextState);
                         aliveCells++;
                     }
                 }
@@ -257,32 +247,21 @@ public class Game {
         long pre = System.currentTimeMillis();
         totalAlive.set(0);
 
+        Long2ObjectOpenHashMap<long[]> next = new Long2ObjectOpenHashMap<>(cells.size());
 
-        cells.long2ObjectEntrySet().parallelStream().forEach(gridCells -> {
-            ParallelTask task = new ParallelTask(gridCells.getValue(), gridCells.getLongKey());
+        cells.long2ObjectEntrySet().parallelStream().forEach(entry -> {
+            ParallelTask task = new ParallelTask(cells, entry.getValue(), entry.getLongKey());
             task.compute();
-            //next.addAll(task.births);
-            cells.put(gridCells.getLongKey(), task.cellsNextState);
+
+            next.put(entry.getLongKey(), task.cellsNextState);
+
             totalAlive.addAndGet(task.aliveCells);
         });
+        cells = next;
 
         updateTime = (int)(System.currentTimeMillis() - pre);
         updateCount++;
         updateTimeTotal += updateTime;
-//        if (updateCount == 100){
-//            wipeBoard();
-//            spawnCountOfCells(5000000);
-//        } else if (updateCount == 200){
-//            wipeBoard();
-//            spawnCountOfCells(5000000);
-//        } else if (updateCount == 300){
-//            wipeBoard();
-//            spawnCountOfCells(5000000);
-//        } else if(updateCount == 400){
-//            wipeBoard();
-//            System.out.println("Processing speed per generation: " +  (updateTimeTotal / updateCount));
-//        }
-        //System.out.println(updateTime);
     }
 }
 

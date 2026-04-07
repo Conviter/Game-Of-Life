@@ -1,4 +1,4 @@
-package NeighbourCountPrimitiveMap;
+package OldVersions.NeighbourCountPrimitiveMap;
 
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 
@@ -160,6 +160,7 @@ public class GamePanel extends JPanel implements Runnable,
         if (drawGrid) drawGrid(g);
 
         drawSelection(g);
+        drawData(g);
     }
 
     private void drawCells(Graphics g) {
@@ -174,6 +175,14 @@ public class GamePanel extends JPanel implements Runnable,
                     cellSize
             );
         }
+    }
+
+    private void drawData(Graphics g){
+        g.setColor(Color.BLACK);
+        g.fillRect(0, 0, 250, 30);
+        g.setColor(Color.white);
+        g.drawString("Alive Cells: "+game.aliveCells.length, 10, 15);
+        g.drawString("Update Time: "+game.updateTime+"ms", 120, 15);
     }
 
     private void drawGrid(Graphics g) {

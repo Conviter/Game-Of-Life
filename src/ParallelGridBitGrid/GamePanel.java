@@ -7,6 +7,7 @@ import java.awt.*;
 import java.awt.event.*;
 import java.awt.image.BufferedImage;
 import java.awt.image.DataBufferInt;
+import java.text.DecimalFormat;
 import java.util.Arrays;
 import java.util.Random;
 
@@ -349,11 +350,13 @@ public class GamePanel extends JPanel implements Runnable,
     }
 
     private void drawData(Graphics g){
+        String aliveCells = String.format("%,d", game.totalAlive.get());
         g.setColor(Color.BLACK);
-        g.fillRect(0, 0, 250, 30);
+        g.fillRect(0, 0, 200 + aliveCells.length() * 7, 30);
         g.setColor(Color.white);
-        g.drawString("Alive Cells: " + game.totalAlive, 10, 15);
-        g.drawString("Update Time: " + game.updateTime + "ms", 120, 15);
+
+        g.drawString("Alive Cells: " + aliveCells, 10, 15);
+        g.drawString("Update Time: " + game.updateTime + "ms", 80 + aliveCells.length() * 7, 15);
         g.drawString("Zoom: " + String.format("%.4f", zoom), 10, 28);
     }
 

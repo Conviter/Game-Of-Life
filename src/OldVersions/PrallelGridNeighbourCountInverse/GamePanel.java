@@ -1,11 +1,14 @@
-package NeighbourCount;
+package OldVersions.PrallelGridNeighbourCountInverse;
+
+import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.*;
-import java.util.HashSet;
+import java.awt.image.BufferedImage;
+import java.awt.image.DataBufferInt;
+import java.util.Arrays;
 import java.util.Random;
-import java.util.Set;
 
 public class GamePanel extends JPanel implements Runnable,
         KeyListener, MouseMotionListener, MouseListener, MouseWheelListener {
@@ -18,7 +21,7 @@ public class GamePanel extends JPanel implements Runnable,
     private final int screenHeight;
 
     private int cellSize;
-    private boolean drawGrid;
+    private boolean drawGrid = true;
 
     private static final Color GRID_ZOOMED_IN  = new Color(150, 150, 150, 40);
     private static final Color GRID_ZOOMED_OUT = new Color(150, 150, 150, 20);
@@ -51,8 +54,11 @@ public class GamePanel extends JPanel implements Runnable,
     private int paintSize = 2;
     private double density = 1.0;
 
-    private final Set<Game.Cell> paintedCells = new HashSet<>();
+    private final LongOpenHashSet paintedCells = new LongOpenHashSet(100000);
     private final Random random = new Random();
+
+    private BufferedImage image;
+    private int[] pixels;
 
     // -----------------------
     // Constructor
@@ -65,7 +71,7 @@ public class GamePanel extends JPanel implements Runnable,
         this.screenWidth = screenWidth;
         this.screenHeight = screenHeight;
         this.cellSize = cellSize;
-        this.drawGrid = drawGrid;
+        this.drawGrid = true;
 
         this.game = new Game(startingCells,
                 screenWidth / 2,
@@ -81,6 +87,9 @@ public class GamePanel extends JPanel implements Runnable,
         addMouseListener(this);
         addMouseMotionListener(this);
         addMouseWheelListener(this);
+
+        image = new BufferedImage(screenWidth, screenHeight, BufferedImage.TYPE_INT_ARGB);
+        pixels = ((DataBufferInt) image.getRaster().getDataBuffer()).getData();
     }
     // -----------------------
     // Update
@@ -140,8 +149,15 @@ public class GamePanel extends JPanel implements Runnable,
     @Override
     public void run() {
         timer = new Timer(100, e -> {
+            long pre = System.currentTimeMillis();
             game.applyRules();
+            long post = System.currentTimeMillis();
+            //System.out.println("applying rules: " + (post - pre));
+
+            pre = System.currentTimeMillis();
             repaint();
+            post = System.currentTimeMillis();
+            //System.out.println("drawing Cells: " + (post - pre));
         });
         timer.start();
     }
@@ -153,37 +169,77 @@ public class GamePanel extends JPanel implements Runnable,
 
     @Override
     protected void paintComponent(Graphics g) {
+        long pre = System.currentTimeMillis();
         super.paintComponent(g);
-
         drawCells(g);
 
         if (drawGrid) drawGrid(g);
 
         drawSelection(g);
+        drawData(g);
+        long post = System.currentTimeMillis();
+       // System.out.println("Drawing: " + (post - pre));
     }
 
     private void drawCells(Graphics g) {
-        g.setColor(Color.GRAY);
-        for (Game.Cell cell : game.aliveCells) {
-            g.fillRect(
-                    worldToScreenX(cell.x()),
-                    worldToScreenY(cell.y()),
-                    cellSize,
-                    cellSize
-            );
+
+        Arrays.fill(pixels, 0);
+
+        for (LongOpenHashSet set : game.allCellsThisState.values()) {
+            for (long cell : set) {
+
+                int worldX = Game.longToIntX(cell);
+                int worldY = Game.longToIntY(cell);
+
+                int sx = worldToScreenX(worldX);
+                int sy = worldToScreenY(worldY);
+
+                // draw cellSize × cellSize block
+                for (int dy = 0; dy < cellSize; dy++) {
+
+                    int py = sy + dy;
+                    if (py < 0 || py >= screenHeight) continue;
+
+                    int row = py * screenWidth;
+
+                    for (int dx = 0; dx < cellSize; dx++) {
+
+                        int px = sx + dx;
+                        if (px < 0 || px >= screenWidth) continue;
+
+                        if (sx >= screenWidth || sy >= screenHeight || sx + cellSize < 0 || sy + cellSize < 0)
+                            continue;
+
+                        pixels[row + px] = 0xFFFFFFFF;
+                    }
+                }
+            }
         }
+
+        g.drawImage(image, 0, 0, null);
+
+    }
+
+    private void drawData(Graphics g){
+        g.setColor(Color.BLACK);
+        g.fillRect(0, 0, 250, 30);
+        g.setColor(Color.white);
+        g.drawString("Alive Cells: "+game.totalAlive, 10, 15);
+        g.drawString("Update Time: "+game.updateTime+"ms", 120, 15);
     }
 
     private void drawGrid(Graphics g) {
-        g.setColor(cellSize < 3 ? GRID_ZOOMED_OUT : GRID_ZOOMED_IN);
+        int gridSize = cellSize;
 
-        int startX = mod(camera.x, cellSize);
-        int startY = mod(camera.y, cellSize);
+        g.setColor(gridSize < 3 ? GRID_ZOOMED_OUT : GRID_ZOOMED_IN);
 
-        for (int x = startX; x < screenWidth; x += cellSize)
+        int startX = mod(camera.x, gridSize);
+        int startY = mod(camera.y, gridSize);
+
+        for (int x = startX; x < screenWidth; x += gridSize)
             g.drawLine(x, 0, x, screenHeight);
 
-        for (int y = startY; y < screenHeight; y += cellSize)
+        for (int y = startY; y < screenHeight; y += gridSize)
             g.drawLine(0, y, screenWidth, y);
     }
 
@@ -280,7 +336,7 @@ public class GamePanel extends JPanel implements Runnable,
         for (int dx = -paintSize; dx <= paintSize; dx++) {
             for (int dy = -paintSize; dy <= paintSize; dy++) {
 
-                Game.Cell cell = new Game.Cell(world.x + dx, world.y + dy);
+                long cell = Game.cordsToLong(world.x + dx, world.y + dy);
 
                 if (paintedCells.add(cell) && random.nextDouble() <= density) {
                     game.spawnCell(cell);
@@ -299,7 +355,7 @@ public class GamePanel extends JPanel implements Runnable,
         for (int x = minX; x <= maxX; x++) {
             for (int y = minY; y <= maxY; y++) {
                 if (random.nextDouble() <= density)
-                    game.spawnCell(new Game.Cell(x, y));
+                    game.spawnCell(Game.cordsToLong(x, y));
             }
         }
     }
@@ -318,8 +374,8 @@ public class GamePanel extends JPanel implements Runnable,
 
     private Point screenToWorld(Point p) {
         return new Point(
-                (p.x - camera.x) / cellSize,
-                (p.y - camera.y) / cellSize
+                (int)Math.floor((p.x - camera.x) / (double)cellSize),
+                (int)Math.floor((p.y - camera.y) / (double)cellSize)
         );
     }
 

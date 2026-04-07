@@ -1,4 +1,4 @@
-package NeighbourCountPrimitiveMap;
+package OldVersions.NeighbourCountPrimitiveMap;
 
 import it.unimi.dsi.fastutil.longs.Long2IntOpenHashMap;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
@@ -15,17 +15,11 @@ public class Game {
     int gameWidth;
     int gameHeight;
     int cellSize;
-
+    int updateTime;
 
     // -------------------------------------------------
     // Cell Representation
     // -------------------------------------------------
-
-    public record Cell(int x, int y) {
-        public Cell addCell(Cell other) {
-            return new Cell(this.x + other.x, this.y + other.y);
-        }
-    }
 
     public static long cordsToLong(int x, int y) {
         return (((long) x) << 32) | (y & 0xFFFFFFFFL);
@@ -41,26 +35,18 @@ public class Game {
 
 
     // -------------------------------------------------
-    // Neighbour Offsets (Moore Neighborhood)
+    // Neighbour Offsets
     // -------------------------------------------------
 
-    private static final Cell[] NEIGHBOURS = {
-            new Cell(-1, 0),
-            new Cell(-1, 1),
-            new Cell(-1, -1),
-            new Cell(1, 0),
-            new Cell(1, 1),
-            new Cell(1, -1),
-            new Cell(0, 1),
-            new Cell(0, -1)
-    };
+    private static final int[] neighbourOffsetX = {-1, -1, -1, 1, 1, 1, 0, 0};
+    private static final int[] neighbourOffsetY = {0, 1, -1, 0, 1, -1, 1, -1};
 
     // -------------------------------------------------
     // State
     // -------------------------------------------------
-    //long[] aliveCells;
 
-    LongOpenHashSet aliveCells;
+
+    long[] aliveCells;
     Long2IntOpenHashMap neighbourCount;
     LongOpenHashSet aliveCellsNextState;
     int filledIndex;
@@ -74,10 +60,9 @@ public class Game {
         this.gameWidth = gameWidth;
         this.gameHeight = gameHeight;
         this.cellSize = cellSize;
-        //this.aliveCells = new long[startingCells];
+        this.aliveCells = new long[startingCells];
 
 
-        this.aliveCells = new LongOpenHashSet(startingCells);
         this.aliveCellsNextState = new LongOpenHashSet(startingCells*2);
         this.neighbourCount  = new Long2IntOpenHashMap(startingCells);
 
@@ -87,21 +72,20 @@ public class Game {
         for (int i = 0; i < startingCells; i++) {
             int x = random.nextInt(this.gameWidth);
             int y = random.nextInt(this.gameHeight);
-            aliveCells.add(cordsToLong(x, y));
-           // addCell(cordsToLong(x, y));
+            addCell(cordsToLong(x, y));
 
         }
     }
 
-//    private void addCell(long cell){
-//        if (filledIndex == aliveCells.length){
-//            long[] newAliveCells = new long[aliveCells.length * 2];
-//            System.arraycopy(aliveCells, 0, newAliveCells, 0, aliveCells.length);
-//            aliveCells = newAliveCells;
-//        }
-//        aliveCells[filledIndex] = cell;
-//        filledIndex += 1;
-//    }
+    private void addCell(long cell){
+        if (filledIndex == aliveCells.length){
+            long[] newAliveCells = new long[aliveCells.length * 2];
+            System.arraycopy(aliveCells, 0, newAliveCells, 0, aliveCells.length);
+            aliveCells = newAliveCells;
+        }
+        aliveCells[filledIndex] = cell;
+        filledIndex += 1;
+    }
 
 
     // -------------------------------------------------
@@ -109,45 +93,48 @@ public class Game {
     // -------------------------------------------------
 
     public void spawnCell(long cell) {
-        aliveCells.add(cell);
-        //addCell(cell);
+       // aliveCells.add(cell);
+        addCell(cell);
     }
 
 
     // -------------------------------------------------
     // Rule Logic
     // -------------------------------------------------
+
     public void applyRules() {
         long pre = System.currentTimeMillis();
         for (long cell : aliveCells){
-            neighbourCount.put(cell, neighbourCount.getOrDefault(cell, 0) + 10);
+            neighbourCount.addTo(cell, 10);
             int x = longToIntX(cell);
             int y = longToIntY(cell);
-            for (Cell offset : NEIGHBOURS) {
-                int neighbourX = x + offset.x;
-                int neighbourY = y + offset.y;
+            for (int i = 0; i < neighbourOffsetX.length; i++) {
+                int neighbourX = x + neighbourOffsetX[i];
+                int neighbourY = y + neighbourOffsetY[i];
                 long key = cordsToLong(neighbourX, neighbourY);
-                neighbourCount.put(key, neighbourCount.getOrDefault(key, 0) + 1);
+                neighbourCount.addTo(key, 1);
             }
         }
-        for (long set : neighbourCount.keySet()){
-//            if ((aliveCells.contains(set) && neighbourCount.get(set) == 2) || neighbourCount.get(set) == 3){
-//                aliveCellsNextState.add(set);
-//            }
-            if (neighbourCount.get(set) == 12 || neighbourCount.get(set) == 3 || neighbourCount.get(set) == 13){
-                aliveCellsNextState.add(set);
+
+
+
+        for (Long2IntOpenHashMap.Entry map : neighbourCount.long2IntEntrySet()){
+            int count = map.getIntValue();
+            long cell = map.getLongKey();
+            if (count == 12 ||count == 3 || count == 13){
+                aliveCellsNextState.add(cell);
             }
         }
-            aliveCells = aliveCellsNextState.clone();
-//        if (aliveCells.length <= aliveCellsNextState.size()){
-//            aliveCells = new long[aliveCellsNextState.size() * 2];
-//        }
-//        System.arraycopy(aliveCellsNextState.toLongArray(), 0, aliveCells, 0, aliveCellsNextState.size());
-//        filledIndex = aliveCellsNextState.size();
+
+
+        aliveCells = aliveCellsNextState.toLongArray();
+        filledIndex = aliveCellsNextState.size();
 
         neighbourCount.clear();
         aliveCellsNextState.clear();
+
         long post = System.currentTimeMillis();
-        System.out.println((post - pre));
+        updateTime = (int) (post - pre);
+
     }
 }
