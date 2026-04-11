@@ -73,7 +73,7 @@ public class Main {
 
         // Sliders
         JSlider sliderUps = createSlider(10, gamePanel::updateTimer);
-        JSlider sliderZoom = createSlider(1, gamePanel::updateZoom);
+        JSlider sliderZoom = createSlider(1, gamePanel::updateCellSize);
         JSlider sliderBrushSize = createSlider(40, gamePanel::updatePaintSize);
         JSlider sliderDensity = createSlider(40, gamePanel::updateDensity);
 

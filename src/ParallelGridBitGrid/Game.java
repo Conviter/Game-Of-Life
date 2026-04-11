@@ -115,7 +115,7 @@ public class Game {
         grid[word] &= ~(1L << bit);
     }
 
-    private boolean getState(int x, int y, long[] grid){
+    public static boolean getState(int x, int y, long[] grid){
         int index = y * 512 + x;
         int arrayIndex = index >> 6;
         int bitIndex = index & 63;
@@ -180,11 +180,9 @@ public class Game {
         }
     }
 
-
     // -------------------------------------------------
     // Rule Logic
     // -------------------------------------------------
-
 
 
     public class ParallelTask {
