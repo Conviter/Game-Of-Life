@@ -171,14 +171,6 @@ public class GamePanel extends JPanel implements Runnable,
         camera.y = (int) Math.round(centerY - worldY * cellSize);
     }
 
-//    public void updateZoomLevel(int change){
-//        if (zoomLevel + change == 0){
-//            zoomLevel *= -1;
-//        } else {
-//            zoomLevel += change;
-//        }
-//    }
-
     // -----------------------
     // Game Loop
     // -----------------------
@@ -230,111 +222,76 @@ public class GamePanel extends JPanel implements Runnable,
     private void drawCellsAccurate(Graphics g) {
         Arrays.fill(pixels, 0);
 
-        //Loop through every stored grid chunk
-        //Your world is stored in chunks of size 512 × 512 cells.
-        //Each entry in game.cells represents one chunk.
-        //Key: packed (gridX, gridY) coordinates
-        //Value: long[] bitset storing which cells are alive inside that chunk
-        for (var gridEntry : game.cells.long2ObjectEntrySet()) {
+        final int WHITE = 0xFFFFFFFF;
 
-            //Decode chunk coordinates
-            //This extracts the chunk position.
-            int gridX = Game.longToIntX(gridEntry.getLongKey());
-            int gridY = Game.longToIntY(gridEntry.getLongKey());
+        // cache frequently used values
+        final double cs = cellSize;
+        final int camX = camera.x;
+        final int camY = camera.y;
 
+        // compute visible world bounds
+        int worldMinX = (int) Math.floor((-camX) / cs);
+        int worldMinY = (int) Math.floor((-camY) / cs);
+        int worldMaxX = (int) Math.ceil((screenWidth - camX) / cs);
+        int worldMaxY = (int) Math.ceil((screenHeight - camY) / cs);
 
-            //Get the chunk’s bit storage
-            //This is the actual 512×512 grid, stored compactly.
-            //A 512×512 grid contains:
-            //262,144 cells total
-            //each long stores 64 cells (64 bits)
-            //So the array length is:
-            //262,144 / 64 = 4096 longs
-            long[] gridBits = gridEntry.getValue();
+        // convert visible world bounds to visible chunk bounds
+        int minGridX = Math.floorDiv(worldMinX, 512);
+        int minGridY = Math.floorDiv(worldMinY, 512);
+        int maxGridX = Math.floorDiv(worldMaxX, 512);
+        int maxGridY = Math.floorDiv(worldMaxY, 512);
 
-            //Loop through each 64-bit word
-            //Each wordIndex represents a block of 64 cells in a row.
-            for (int wordIndex = 0; wordIndex < gridBits.length; wordIndex++) {
+        // loop only through visible chunks
+        for (int gridY = minGridY; gridY <= maxGridY; gridY++) {
+            for (int gridX = minGridX; gridX <= maxGridX; gridX++) {
 
-                //Read the 64-bit word
-                //This retrieves the 64-bit chunk of cells.
-                //If it equals 0, that means all 64 cells are dead.
-                //So we skip it for performance.
-                long longBits = gridBits[wordIndex];
-                if (longBits == 0) continue;
+                long key = Game.cordsToLong(gridX, gridY);
+                long[] gridBits = game.cells.get(key);
+                if (gridBits == null) continue;
 
-                // Convert wordIndex into (localY, longXIndex)
-                //This is because the 512-wide row is stored as:
-                //512 bits per row
-                //512 / 64 = 8 longs per row
-                //So:
-                //wordIndex / 8 tells us which row (localY)
-                //wordIndex % 8 tells us which long in that row (longXIndex)
-                int localY = wordIndex >> 3;        // wordIndex / 8
-                int longXIndex = wordIndex & 7;     // wordIndex % 8
+                // iterate through each 64-bit word
+                for (int wordIndex = 0; wordIndex < gridBits.length; wordIndex++) {
 
-                //Iterate through all alive bits in that long
-                while (longBits != 0) {
+                    long bits = gridBits[wordIndex];
+                    if (bits == 0) continue;
 
-                    //Find the next alive cell in the long
-                    //This finds the index of the lowest set bit.
-                    int bitIndex = Long.numberOfTrailingZeros(longBits);
+                    int localY = wordIndex >> 3;        // / 8
+                    int longXIndex = wordIndex & 7;     // % 8
 
-                    // Convert bitIndex into localX
-                    //longXIndex << 6 is longXIndex * 64
-                    //then add bitIndex
-                    int localX = (longXIndex << 6) + bitIndex;
+                    while (bits != 0) {
+                        int bitIndex = Long.numberOfTrailingZeros(bits);
+                        int localX = (longXIndex << 6) + bitIndex;
 
-                    // Convert local coordinates into world coordinates
-                    int worldX = gridX * 512 + localX;
-                    int worldY = gridY * 512 + localY;
+                        int worldX = (gridX << 9) + localX;  // gridX * 512
+                        int worldY = (gridY << 9) + localY;  // gridY * 512
 
-                    // Convert world coordinates into screen coordinates
-                    //This uses our camera offset and cellSize scaling.
-                    //So now we know where on the screen that world cell should appear.
-                    int screenX = worldToScreenX(worldX);
-                    int screenY = worldToScreenY(worldY);
+                        int screenX = (int) (worldX * cs + camX);
+                        int screenY = (int) (worldY * cs + camY);
 
-                    // reject fully offscreen cells
-                    //But we still need to remove that bit from longBits (done below).
-                    if (screenX >= screenWidth || screenY >= screenHeight ||
-                            screenX + cellSize <= 0 || screenY + cellSize <= 0) {
-                        longBits &= longBits - 1;
-                        continue;
-                    }
+                        int size = (int) cs;
 
-                    // Draw the cell as a block of pixels
-                    //This loops over the pixel rows inside the cell square.
-                    for (int pixelOffsetY = 0; pixelOffsetY < cellSize; pixelOffsetY++) {
-
-                        //Compute actual screen Y coordinate
-                        //This prevents writing outside the pixel array.
-                        int pixelY = screenY + pixelOffsetY;
-                        if (pixelY < 0 || pixelY >= screenHeight) continue;
-
-                        //Convert pixelY into an index offset
-                        //This precomputes y * width so we don’t recompute it for every pixel.
-                        int rowOffset = pixelY * screenWidth;
-
-                        //Loop over pixel columns inside the cell
-                        //This loops across the width of the cell square.
-                        for (int pixelOffsetX = 0; pixelOffsetX < cellSize; pixelOffsetX++) {
-
-                            //Compute actual screen X coordinate
-                            //Again bounds checking.
-                            int pixelX = screenX + pixelOffsetX;
-                            if (pixelX < 0 || pixelX >= screenWidth) continue;
-
-                            //Write the pixel in solid white
-                            pixels[rowOffset + pixelX] = 0xFFFFFFFF;
+                        // fast reject offscreen
+                        if (screenX >= screenWidth || screenY >= screenHeight ||
+                                screenX + size <= 0 || screenY + size <= 0) {
+                            bits &= bits - 1;
+                            continue;
                         }
-                    }
 
-                    // Remove the bit we just processed
-                    //This is a classic bit trick:
-                    //It clears the lowest set bit in longBits
-                    //So the loop progresses to the next alive cell in the same 64-bit word.
-                    longBits &= longBits - 1;
+                        // clamp drawing bounds
+                        int startX = Math.max(0, screenX);
+                        int endX = Math.min(screenWidth, screenX + size);
+
+                        int startY = Math.max(0, screenY);
+                        int endY = Math.min(screenHeight, screenY + size);
+
+                        // draw filled square using scanline fills
+                        for (int py = startY; py < endY; py++) {
+                            int rowOffset = py * screenWidth;
+                            Arrays.fill(pixels, rowOffset + startX, rowOffset + endX, WHITE);
+                        }
+
+                        bits &= bits - 1;
+                    }
                 }
             }
         }
@@ -367,7 +324,7 @@ public class GamePanel extends JPanel implements Runnable,
                 long gridCord = Game.cordsToLong(gridX, gridY);
                 long[] grid = game.cells.get(gridCord);
 
-                // FAST SKIP: if the chunk is empty, the pixel stays black
+                // if the chunk is empty, the pixel stays black
                 if (grid == null) continue;
 
                 int localX = Math.floorMod(worldX, 512);
@@ -375,7 +332,7 @@ public class GamePanel extends JPanel implements Runnable,
 
                 int aliveCount = 0;
 
-                // FAST PATH: sampled block stays fully inside this chunk
+                // sampled block stays fully inside this chunk
                 if (localX + cellsPerPixel < 512 && localY + cellsPerPixel < 512) {
 
                     for (int offsetX = 0; offsetX < cellsPerPixel; offsetX++) {
@@ -391,7 +348,7 @@ public class GamePanel extends JPanel implements Runnable,
                     }
 
                 } else {
-                    // SLOW PATH: sampled block crosses chunk boundary (rare case)
+                    // sampled block crosses chunk boundary
 
                     long currentGridCord = gridCord;
                     long[] currentGrid = grid;
@@ -424,7 +381,7 @@ public class GamePanel extends JPanel implements Runnable,
                     }
                 }
 
-                double aliveRatio = (aliveCount * 1.3) / (cellsPerPixel * cellsPerPixel);
+                double aliveRatio = (aliveCount * 1.6) / (cellsPerPixel * cellsPerPixel);
                 int grayValue = (int) (aliveRatio * 255.0);
                 grayValue = Math.max(0, Math.min(255, grayValue));
 

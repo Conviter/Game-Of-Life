@@ -1,10 +1,8 @@
 package ParallelGridBitGrid;
 
-import it.unimi.dsi.fastutil.longs.Long2IntOpenHashMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 
 import java.util.Random;
-import java.util.concurrent.RecursiveAction;
 import java.util.concurrent.atomic.AtomicInteger;
 
 
@@ -187,7 +185,7 @@ public class Game {
 
     public class ParallelTask {
         Long2ObjectOpenHashMap<long[]> currentMap;
-
+        long[] neighbourCount;
         long[] cellsThisState;
         long[] cellsNextState;
         int gridX;
@@ -198,42 +196,42 @@ public class Game {
             this.currentMap = currentMap;
             this.cellsThisState = cellsThisState;
             this.cellsNextState = new long[4096];
+            this.neighbourCount = new long[16384];
             gridX = (int) (grid >> 32);
             gridY = (int) grid;
         }
 
         protected void compute() {
-            for (int i = 0; i < GRID_SIZE; i++) {
-                for (int j = 0; j < GRID_SIZE; j++) {
+            for (int x = 0; x < GRID_SIZE; x++) {
+                for (int y = 0; y < GRID_SIZE; y++) {
                     int neighbourCount = 0;
-
                     for (int k = 0; k < offsets.length; k += 2) {
-                        int nx = i + offsets[k];
-                        int ny = j + offsets[k + 1];
+                        int neighbourX = x + offsets[k];
+                        int neighbourY = y + offsets[k + 1];
 
                         long[] neighbourGrid = cellsThisState;
 
-                        if (nx < 0 || nx >= GRID_SIZE || ny < 0 || ny >= GRID_SIZE) {
-                            int neighbourGridX = gridX + Math.floorDiv(nx, GRID_SIZE);
-                            int neighbourGridY = gridY + Math.floorDiv(ny, GRID_SIZE);
+                        if (neighbourX < 0 || neighbourX >= GRID_SIZE || neighbourY < 0 || neighbourY >= GRID_SIZE) {
+                            int neighbourGridX = gridX + Math.floorDiv(neighbourX, GRID_SIZE);
+                            int neighbourGridY = gridY + Math.floorDiv(neighbourY, GRID_SIZE);
 
                             long neighbourKey = Game.cordsToLong(neighbourGridX, neighbourGridY);
 
                             neighbourGrid = currentMap.get(neighbourKey);
                             if (neighbourGrid == null) continue;
 
-                            nx = Math.floorMod(nx, GRID_SIZE);
-                            ny = Math.floorMod(ny, GRID_SIZE);
+                            neighbourX = Math.floorMod(neighbourX, GRID_SIZE);
+                            neighbourY = Math.floorMod(neighbourY, GRID_SIZE);
                         }
 
-                        if (getState(nx, ny, neighbourGrid)) {
+                        if (getState(neighbourX, neighbourY, neighbourGrid)) {
                             neighbourCount++;
                         }
                     }
 
-                    boolean alive = getState(i, j, cellsThisState);
+                    boolean alive = getState(x, y, cellsThisState);
                     if ((alive && neighbourCount == 2) || neighbourCount == 3) {
-                        setAlive(i, j, cellsNextState);
+                        setAlive(x, y, cellsNextState);
                         aliveCells++;
                     }
                 }
@@ -251,7 +249,9 @@ public class Game {
             ParallelTask task = new ParallelTask(cells, entry.getValue(), entry.getLongKey());
             task.compute();
 
-            next.put(entry.getLongKey(), task.cellsNextState);
+            synchronized (next){
+                next.put(entry.getLongKey(), task.cellsNextState);
+            }
 
             totalAlive.addAndGet(task.aliveCells);
         });
